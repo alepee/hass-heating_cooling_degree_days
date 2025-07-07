@@ -23,7 +23,7 @@ jobs:
           cd ${{ github.workspace }}/custom_components/heating_cooling_degree_days
           zip heating_cooling_degree_days.zip -r ./
       - name: Upload zip to release
-        uses: svenstaro/upload-release-action@2.9.0
+        uses: svenstaro/upload-release-action@2.11.2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: ${{ github.workspace }}/custom_components/heating_cooling_degree_days/heating_cooling_degree_days.zip
