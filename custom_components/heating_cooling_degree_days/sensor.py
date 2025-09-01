@@ -138,15 +138,16 @@ class DegreeDegreeSensor(CoordinatorEntity, SensorEntity):
             return None
 
         value = self.coordinator.data[self.sensor_type]
-        rounded_value = round(value, 2)
+        # Values are already rounded to 1 decimal place in calculations.py
+        # No need for additional rounding here
 
         _LOGGER.debug(
-            "Returning value for %s: %.2f %s",
+            "Returning value for %s: %.1f %s",
             self.entity_id,
-            rounded_value,
+            value,
             self._attr_native_unit_of_measurement,
         )
-        return rounded_value
+        return value
 
     @property
     def extra_state_attributes(self):

@@ -84,14 +84,15 @@ def calculate_hdd_from_readings(
     if len(readings) > 1:
         contribution_percentage = (significant_intervals / (len(readings) - 1)) * 100
         _LOGGER.debug(
-            "HDD calculation: %.2f degree-days from %d/%d intervals (%.1f%% contributed)",
+            "HDD calculation: %.1f degree-days from %d/%d intervals (%.1f%% contributed)",
             total_hdd,
             significant_intervals,
             len(readings) - 1,
             contribution_percentage,
         )
 
-    return total_hdd
+    # Round to 1 decimal place to avoid excessive precision
+    return round(total_hdd, 1)
 
 
 def calculate_cdd_from_readings(
@@ -112,8 +113,7 @@ def calculate_cdd_from_readings(
         base_temp: Base temperature for CDD calculation
 
     Returns:
-        float: Calculated CDD value
-
+        float: Calculated CDD value rounded to 1 decimal place
     """
     if not readings:
         _LOGGER.debug("No temperature readings provided for CDD calculation")
@@ -169,14 +169,15 @@ def calculate_cdd_from_readings(
     if len(readings) > 1:
         contribution_percentage = (significant_intervals / (len(readings) - 1)) * 100
         _LOGGER.debug(
-            "CDD calculation: %.2f degree-days from %d/%d intervals (%.1f%% contributed)",
+            "CDD calculation: %.1f degree-days from %d/%d intervals (%.1f%% contributed)",
             total_cdd,
             significant_intervals,
             len(readings) - 1,
             contribution_percentage,
         )
 
-    return total_cdd
+    # Round to 1 decimal place to avoid excessive precision
+    return round(total_cdd, 1)
 
 
 async def get_temperature_readings(
