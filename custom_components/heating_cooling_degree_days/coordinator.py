@@ -2,10 +2,11 @@
 
 import calendar
 from collections import defaultdict
-from datetime import timedelta
+from datetime import date, timedelta
 import logging
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
@@ -27,6 +28,9 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+STORAGE_VERSION = 1
+STORAGE_KEY = f"{DOMAIN}_data"
+
 
 class HDDDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching HDD and CDD data."""
@@ -37,6 +41,7 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
         temp_entity: str,
         base_temp: float,
         temperature_unit: str,
+        entry_id: str,
         include_cooling: bool = False,
         include_weekly: bool = True,
         include_monthly: bool = True,
@@ -51,14 +56,24 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
         self.temp_entity = temp_entity
         self.base_temp = base_temp
         self.temperature_unit = temperature_unit
+        self.entry_id = entry_id
         self.include_cooling = include_cooling
         self.include_weekly = include_weekly
         self.include_monthly = include_monthly
         self.temperature_history = []
-        self.daily_values = defaultdict(float)  # Storage for daily values by date
+        self.daily_hdd_values = defaultdict(
+            float
+        )  # Storage for daily HDD values by date
         self.daily_cdd_values = defaultdict(
             float
         )  # Storage for daily CDD values by date
+
+        # Initialize storage for persistent data
+        self._store = Store(
+            hass,
+            STORAGE_VERSION,
+            f"{STORAGE_KEY}_{entry_id}",
+        )
 
         _LOGGER.info(
             "Initialized HDDDataUpdateCoordinator with sensor %s, base temp %.1f°%s, "
@@ -70,6 +85,74 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
             "enabled" if include_weekly else "disabled",
             "enabled" if include_monthly else "disabled",
         )
+
+    async def async_load_stored_data(self):
+        """Load stored daily values from persistent storage."""
+        try:
+            stored_data = await self._store.async_load()
+            if stored_data:
+                # Convert date strings back to date objects
+                # Support both old "daily_values" key and new "daily_hdd_values" key for backward compatibility
+                hdd_key = (
+                    "daily_hdd_values"
+                    if "daily_hdd_values" in stored_data
+                    else "daily_values"
+                )
+                if hdd_key in stored_data:
+                    loaded_values = {
+                        date.fromisoformat(date_str): value
+                        for date_str, value in stored_data[hdd_key].items()
+                    }
+                    # Convert back to defaultdict for consistency
+                    self.daily_hdd_values = defaultdict(float, loaded_values)
+                    _LOGGER.info(
+                        "Loaded %d HDD daily values from storage",
+                        len(self.daily_hdd_values),
+                    )
+
+                if "daily_cdd_values" in stored_data:
+                    loaded_cdd_values = {
+                        date.fromisoformat(date_str): value
+                        for date_str, value in stored_data["daily_cdd_values"].items()
+                    }
+                    # Convert back to defaultdict for consistency
+                    self.daily_cdd_values = defaultdict(float, loaded_cdd_values)
+                    _LOGGER.info(
+                        "Loaded %d CDD daily values from storage",
+                        len(self.daily_cdd_values),
+                    )
+            else:
+                _LOGGER.debug("No stored data found, starting with empty history")
+        except Exception as ex:
+            _LOGGER.warning(
+                "Error loading stored data: %s. Starting with empty history.", str(ex)
+            )
+            # Reset to empty dictionaries on error
+            self.daily_hdd_values = defaultdict(float)
+            self.daily_cdd_values = defaultdict(float)
+
+    async def async_save_data(self):
+        """Save daily values to persistent storage."""
+        try:
+            # Convert date objects to ISO format strings for JSON serialization
+            data_to_save = {
+                "daily_hdd_values": {
+                    date_obj.isoformat(): value
+                    for date_obj, value in self.daily_hdd_values.items()
+                },
+                "daily_cdd_values": {
+                    date_obj.isoformat(): value
+                    for date_obj, value in self.daily_cdd_values.items()
+                },
+            }
+            await self._store.async_save(data_to_save)
+            _LOGGER.debug(
+                "Saved %d HDD and %d CDD daily values to storage",
+                len(self.daily_hdd_values),
+                len(self.daily_cdd_values),
+            )
+        except Exception as ex:
+            _LOGGER.error("Error saving data to storage: %s", str(ex))
 
     async def _async_update_data(self):
         """Update data via library."""
@@ -132,8 +215,10 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
         daily_cdd = 0
 
         # Store in daily values history - use yesterday as it's a complete day
+        data_changed = False
         if daily_readings:
-            self.daily_values[yesterday_date] = daily_hdd
+            self.daily_hdd_values[yesterday_date] = daily_hdd
+            data_changed = True
             _LOGGER.debug(
                 "Calculated daily HDD for %s: %.2f (from %d readings)",
                 yesterday_date,
@@ -145,6 +230,7 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
             if self.include_cooling:
                 daily_cdd = calculate_cdd_from_readings(daily_readings, self.base_temp)
                 self.daily_cdd_values[yesterday_date] = daily_cdd
+                data_changed = True
                 _LOGGER.debug(
                     "Calculated daily CDD for %s: %.2f (from %d readings)",
                     yesterday_date,
@@ -155,11 +241,16 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
         # Clean up old data (keep 60 days maximum)
         old_hdd_count, old_cdd_count = self._cleanup_old_data(60)
         if old_hdd_count or old_cdd_count:
+            data_changed = True
             _LOGGER.debug(
                 "Cleaned up %d old HDD values and %d old CDD values",
                 old_hdd_count,
                 old_cdd_count,
             )
+
+        # Save data to persistent storage if it changed
+        if data_changed:
+            await self.async_save_data()
 
         # Prepare result dict - daily values are always included
         result = {
@@ -198,25 +289,27 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
         cutoff_date = dt_util.now().date() - timedelta(days=days_to_keep)
 
         # Count items to be removed for logging
-        hdd_before_count = len(self.daily_values)
+        hdd_before_count = len(self.daily_hdd_values)
         cdd_before_count = len(self.daily_cdd_values)
 
         # Create new dictionaries with only recent values
-        self.daily_values = {
+        filtered_hdd = {
             date: value
-            for date, value in self.daily_values.items()
+            for date, value in self.daily_hdd_values.items()
             if date >= cutoff_date
         }
+        self.daily_hdd_values = defaultdict(float, filtered_hdd)
 
-        self.daily_cdd_values = {
+        filtered_cdd = {
             date: value
             for date, value in self.daily_cdd_values.items()
             if date >= cutoff_date
         }
+        self.daily_cdd_values = defaultdict(float, filtered_cdd)
 
         # Return count of removed items
         return (
-            hdd_before_count - len(self.daily_values),
+            hdd_before_count - len(self.daily_hdd_values),
             cdd_before_count - len(self.daily_cdd_values),
         )
 
@@ -242,7 +335,7 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
             current_date = week_start + timedelta(days=i)
             if (
                 current_date <= dt_util.now().date()
-                and current_date not in self.daily_values
+                and current_date not in self.daily_hdd_values
             ):
                 missing_dates.append(current_date)
 
@@ -256,7 +349,7 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
         weekly_hdd = 0
         for i in range(7):  # Monday to Sunday
             current_date = week_start + timedelta(days=i)
-            daily_value = self.daily_values.get(current_date, 0)
+            daily_value = self.daily_hdd_values.get(current_date, 0)
             weekly_hdd += daily_value
 
         return weekly_hdd
@@ -283,7 +376,7 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
         missing_dates = []
         current_date = month_start
         while current_date <= min(dt_util.now().date(), month_end):
-            if current_date not in self.daily_values:
+            if current_date not in self.daily_hdd_values:
                 missing_dates.append(current_date)
             current_date += timedelta(days=1)
 
@@ -303,7 +396,7 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
         current_date = month_start
 
         while current_date <= month_end:
-            monthly_hdd += self.daily_values.get(current_date, 0)
+            monthly_hdd += self.daily_hdd_values.get(current_date, 0)
             current_date += timedelta(days=1)
 
         return monthly_hdd
