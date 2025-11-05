@@ -95,7 +95,7 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     def _get_default_base_temperature(self) -> float:
-        """Get the default base temperature based on user prefered unit system."""
+        """Get the default base temperature based on user preferred unit system."""
         return MAP_DEFAULT_BASE_TEMPERATURE.get(
             self.hass.config.units.temperature_unit, DEFAULT_BASE_TEMPERATURE_CELSIUS
         )
