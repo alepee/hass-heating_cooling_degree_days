@@ -76,9 +76,8 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Determine the default base temperature based on selected unit
         default_base_temp = DEFAULT_BASE_TEMPERATURE_CELSIUS
-        if user_input and CONF_TEMPERATURE_UNIT in user_input:
-            if user_input[CONF_TEMPERATURE_UNIT] == "fahrenheit":
-                default_base_temp = DEFAULT_BASE_TEMPERATURE_FAHRENHEIT
+        if user_input and user_input.get(CONF_TEMPERATURE_UNIT) == "fahrenheit":
+            default_base_temp = DEFAULT_BASE_TEMPERATURE_FAHRENHEIT
 
         return self.async_show_form(
             step_id="user",
