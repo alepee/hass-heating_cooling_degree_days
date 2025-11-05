@@ -16,7 +16,7 @@ from .const import (
     CONF_INCLUDE_WEEKLY,
     CONF_TEMPERATURE_SENSOR,
     CONF_TEMPERATURE_UNIT,
-    DEFAULT_BASE_TEMPERATURE,
+    DEFAULT_BASE_TEMPERATURE_CELSIUS,
     DEFAULT_INCLUDE_COOLING,
     DEFAULT_INCLUDE_MONTHLY,
     DEFAULT_INCLUDE_WEEKLY,
@@ -84,9 +84,6 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         ),
                     ),
                     vol.Required(
-                        CONF_BASE_TEMPERATURE, default=DEFAULT_BASE_TEMPERATURE
-                    ): vol.Coerce(float),
-                    vol.Required(
                         CONF_TEMPERATURE_UNIT, default="celsius"
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
@@ -94,6 +91,9 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             translation_key="temperature_unit",
                         )
                     ),
+                    vol.Required(
+                        CONF_BASE_TEMPERATURE, default=DEFAULT_BASE_TEMPERATURE_CELSIUS
+                    ): vol.Coerce(float),
                     vol.Required(
                         CONF_INCLUDE_COOLING, default=DEFAULT_INCLUDE_COOLING
                     ): selector.BooleanSelector(),
