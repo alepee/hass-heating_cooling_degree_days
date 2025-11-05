@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2025-11-05
+
+### Added
+- Persistent storage for historical HDD and CDD data (prevents data loss on restarts)
+- Field descriptions in configuration UI
+
+### Changed
+- Default base temperature: 18°C for Celsius (was 65°C), 65°F for Fahrenheit (unchanged)
+- Temperature unit now automatically detected from Home Assistant preferences
+- Removed temperature unit field from configuration flow
+
+### Fixed
+- Fixed issue #57: Monthly and weekly degree days values no longer reset after Home Assistant restart
+
 ## [1.0.1] - 2025-01-27
 
 ### Fixed
