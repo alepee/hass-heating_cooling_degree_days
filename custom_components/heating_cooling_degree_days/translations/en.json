@@ -7,23 +7,17 @@
         "data": {
           "temperature_sensor": "Outdoor Temperature Sensor",
           "base_temperature": "Base Temperature",
-          "temperature_unit": "Temperature Unit",
           "include_cooling": "Include Cooling Degree Days (CDD)",
           "include_weekly": "Include Weekly Sensors",
           "include_monthly": "Include Monthly Sensors"
+        },
+        "data_description": {
+          "base_temperature": "The default base temperature is 18°C for Celsius or 65°F for Fahrenheit, depending on your unit system"
         }
       }
     },
     "error": {
       "invalid_temperature_sensor": "Invalid temperature sensor. Please select a valid temperature sensor."
-    }
-  },
-  "selector": {
-    "temperature_unit": {
-      "options": {
-        "celsius": "Celsius (°C)",
-        "fahrenheit": "Fahrenheit (°F)"
-      }
     }
   },
   "entity": {

@@ -7,23 +7,17 @@
         "data": {
           "temperature_sensor": "Capteur de température extérieure",
           "base_temperature": "Température de base",
-          "temperature_unit": "Unité de température",
           "include_cooling": "Inclure les degrés-jours de refroidissement (DJR)",
           "include_weekly": "Inclure les capteurs hebdomadaires",
           "include_monthly": "Inclure les capteurs mensuels"
+        },
+        "data_description": {
+          "base_temperature": "La température de base par défaut est de 18°C pour Celsius ou 65°F pour Fahrenheit, selon votre système d'unités"
         }
       }
     },
     "error": {
       "invalid_temperature_sensor": "Capteur de température invalide. Veuillez sélectionner un capteur de température valide."
-    }
-  },
-  "selector": {
-    "temperature_unit": {
-      "options": {
-        "celsius": "Celsius (°C)",
-        "fahrenheit": "Fahrenheit (°F)"
-      }
     }
   },
   "entity": {

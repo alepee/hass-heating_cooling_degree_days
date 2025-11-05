@@ -9,7 +9,6 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -109,11 +108,7 @@ class DegreeDegreeSensor(CoordinatorEntity, SensorEntity):
             sensor_type_desc = "Heating"
 
         # Set the unit of measurement based on temperature unit
-        if coordinator.temperature_unit == UnitOfTemperature.FAHRENHEIT:
-            self._attr_native_unit_of_measurement = "°F·d"
-        else:
-            # Default to Celsius
-            self._attr_native_unit_of_measurement = "°C·d"
+        self._attr_native_unit_of_measurement = f"{coordinator.temperature_unit}·d"
 
         _LOGGER.debug(
             "Initialized %s Degree Days sensor: %s with unit %s",

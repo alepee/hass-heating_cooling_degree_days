@@ -6,7 +6,6 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.components.sensor import SensorDeviceClass
-from homeassistant.const import UnitOfTemperature
 from homeassistant.helpers import selector
 
 from .const import (
@@ -16,23 +15,17 @@ from .const import (
     CONF_INCLUDE_WEEKLY,
     CONF_TEMPERATURE_SENSOR,
     CONF_TEMPERATURE_UNIT,
-    DEFAULT_BASE_TEMPERATURE,
+    DEFAULT_BASE_TEMPERATURE_CELSIUS,
     DEFAULT_INCLUDE_COOLING,
     DEFAULT_INCLUDE_MONTHLY,
     DEFAULT_INCLUDE_WEEKLY,
+    DEFAULT_NAME_WITH_HEATING,
+    DEFAULT_NAME_WITH_HEATING_AND_COOLING,
     DOMAIN,
+    MAP_DEFAULT_BASE_TEMPERATURE,
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-TEMPERATURE_UNIT_MAPPING = {
-    "celsius": UnitOfTemperature.CELSIUS,
-    "fahrenheit": UnitOfTemperature.FAHRENHEIT,
-}
-
-# Fixed titles in English
-TITLE_STANDARD = "Heating Degree Days"
-TITLE_WITH_COOLING = "Heating & Cooling Degree Days"
 
 
 class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -54,17 +47,17 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_temperature_sensor"
 
             if not errors:
-                # Map the temperature unit selection to the actual unit
-                user_input[CONF_TEMPERATURE_UNIT] = TEMPERATURE_UNIT_MAPPING[
-                    user_input[CONF_TEMPERATURE_UNIT]
-                ]
+                # Set the temperature unit to the user's preferred unit
+                user_input[CONF_TEMPERATURE_UNIT] = (
+                    self.hass.config.units.temperature_unit
+                )
 
                 include_cooling = user_input.get(
                     CONF_INCLUDE_COOLING, DEFAULT_INCLUDE_COOLING
                 )
 
                 # Use simple fixed titles
-                title = TITLE_WITH_COOLING if include_cooling else TITLE_STANDARD
+                title = self._get_default_name(include_cooling)
 
                 _LOGGER.debug("Creating integration with title: %s", title)
 
@@ -84,16 +77,9 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         ),
                     ),
                     vol.Required(
-                        CONF_BASE_TEMPERATURE, default=DEFAULT_BASE_TEMPERATURE
+                        CONF_BASE_TEMPERATURE,
+                        default=self._get_default_base_temperature(),
                     ): vol.Coerce(float),
-                    vol.Required(
-                        CONF_TEMPERATURE_UNIT, default="celsius"
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=["celsius", "fahrenheit"],
-                            translation_key="temperature_unit",
-                        )
-                    ),
                     vol.Required(
                         CONF_INCLUDE_COOLING, default=DEFAULT_INCLUDE_COOLING
                     ): selector.BooleanSelector(),
@@ -106,6 +92,20 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+        )
+
+    def _get_default_base_temperature(self) -> float:
+        """Get the default base temperature based on user preferred unit system."""
+        return MAP_DEFAULT_BASE_TEMPERATURE.get(
+            self.hass.config.units.temperature_unit, DEFAULT_BASE_TEMPERATURE_CELSIUS
+        )
+
+    def _get_default_name(self, include_cooling: bool) -> str:
+        """Get the default name based on heating and cooling degree days configuration."""
+        return (
+            DEFAULT_NAME_WITH_HEATING_AND_COOLING
+            if include_cooling
+            else DEFAULT_NAME_WITH_HEATING
         )
 
     def _validate_sensor(self, entity_id):
