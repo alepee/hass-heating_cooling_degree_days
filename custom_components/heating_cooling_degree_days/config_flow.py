@@ -17,6 +17,7 @@ from .const import (
     CONF_TEMPERATURE_SENSOR,
     CONF_TEMPERATURE_UNIT,
     DEFAULT_BASE_TEMPERATURE_CELSIUS,
+    DEFAULT_BASE_TEMPERATURE_FAHRENHEIT,
     DEFAULT_INCLUDE_COOLING,
     DEFAULT_INCLUDE_MONTHLY,
     DEFAULT_INCLUDE_WEEKLY,
@@ -73,6 +74,12 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data=user_input,
                 )
 
+        # Determine the default base temperature based on selected unit
+        default_base_temp = DEFAULT_BASE_TEMPERATURE_CELSIUS
+        if user_input and CONF_TEMPERATURE_UNIT in user_input:
+            if user_input[CONF_TEMPERATURE_UNIT] == "fahrenheit":
+                default_base_temp = DEFAULT_BASE_TEMPERATURE_FAHRENHEIT
+
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
@@ -92,7 +99,7 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         )
                     ),
                     vol.Required(
-                        CONF_BASE_TEMPERATURE, default=DEFAULT_BASE_TEMPERATURE_CELSIUS
+                        CONF_BASE_TEMPERATURE, default=default_base_temp
                     ): vol.Coerce(float),
                     vol.Required(
                         CONF_INCLUDE_COOLING, default=DEFAULT_INCLUDE_COOLING
