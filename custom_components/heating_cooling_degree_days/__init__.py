@@ -67,10 +67,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             temp_entity=entry.data[CONF_TEMPERATURE_SENSOR],
             base_temp=entry.data[CONF_BASE_TEMPERATURE],
             temperature_unit=entry.data[CONF_TEMPERATURE_UNIT],
+            entry_id=entry.entry_id,
             include_cooling=include_cooling,
             include_weekly=include_weekly,
             include_monthly=include_monthly,
         )
+
+        # Load stored data before first refresh
+        _LOGGER.debug("Loading stored data for coordinator")
+        await coordinator.async_load_stored_data()
 
         # Do the initial data refresh
         _LOGGER.debug("Performing initial data refresh for coordinator")

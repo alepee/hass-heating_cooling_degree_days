@@ -114,7 +114,6 @@ def calculate_cdd_from_readings(
 
     Returns:
         float: Calculated CDD value rounded to 1 decimal place
-
     """
     if not readings:
         _LOGGER.debug("No temperature readings provided for CDD calculation")
