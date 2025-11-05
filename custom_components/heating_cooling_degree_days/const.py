@@ -2,6 +2,8 @@
 
 from datetime import timedelta
 
+from homeassistant.const import UnitOfTemperature
+
 DOMAIN = "heating_cooling_degree_days"
 
 CONF_TEMPERATURE_SENSOR = "temperature_sensor"
@@ -13,7 +15,14 @@ CONF_INCLUDE_MONTHLY = "include_monthly"
 
 DEFAULT_BASE_TEMPERATURE_CELSIUS = 18.0
 DEFAULT_BASE_TEMPERATURE_FAHRENHEIT = 65.0
-DEFAULT_NAME = "Heating & Cooling Degree Days"
+MAP_DEFAULT_BASE_TEMPERATURE = {
+    UnitOfTemperature.CELSIUS: DEFAULT_BASE_TEMPERATURE_CELSIUS,
+    UnitOfTemperature.FAHRENHEIT: DEFAULT_BASE_TEMPERATURE_FAHRENHEIT,
+}
+
+DEFAULT_NAME_WITH_HEATING = "Heating Degree Days"
+DEFAULT_NAME_WITH_HEATING_AND_COOLING = "Heating & Cooling Degree Days"
+
 DEFAULT_INCLUDE_COOLING = False
 DEFAULT_INCLUDE_WEEKLY = True
 DEFAULT_INCLUDE_MONTHLY = True
