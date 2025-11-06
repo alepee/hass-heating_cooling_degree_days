@@ -31,6 +31,8 @@ This integration uses a numerical integration method for calculating degree days
 
 This method provides more accurate results than simple daily averages, especially when temperature fluctuates significantly throughout the day.
 
+**Note**: All degree days values are rounded to 1 decimal place (e.g., `12.3°C·d`) for optimal readability and practical use.
+
 ## Installation
 
 ### Using HACS (recommended)
@@ -45,8 +47,11 @@ This method provides more accurate results than simple daily averages, especiall
 
 ### Manual Installation
 
-1. Copy the `heating_cooling_degree_days` folder from `custom_components` to your Home Assistant's `custom_components` directory
-2. Restart Home Assistant
+1. Download the latest release from the [releases page](https://github.com/alepee/hass-heating_cooling_degree_days/releases)
+2. Extract the `heating_cooling_degree_days` folder from the `custom_components` directory in the downloaded archive
+3. Copy the `heating_cooling_degree_days` folder to your Home Assistant's `custom_components` directory
+   - If the `custom_components` directory doesn't exist, create it in your Home Assistant config directory
+4. Restart Home Assistant
 
 ## Configuration
 
@@ -55,8 +60,7 @@ This method provides more accurate results than simple daily averages, especiall
 3. Search for "Heating & Cooling Degree Days"
 4. Configure:
    - Select your outdoor temperature sensor
-   - Set the base temperature
-   - Choose your preferred temperature unit (Celsius or Fahrenheit)
+   - Set the base temperature (defaults are 18°C or 65°F)
    - Enable/disable Cooling Degree Days calculation
    - Choose whether to include weekly and monthly sensors
 
@@ -67,6 +71,7 @@ This method provides more accurate results than simple daily averages, especiall
 - Configurable base temperature
 - Support for both Celsius and Fahrenheit with appropriate units (°C·d or °F·d)
 - Uses full temperature history with numerical integration for accurate calculations
+- Values displayed with 1 decimal place precision for optimal readability
 - Flexibility to enable only the sensors you need (daily, weekly, monthly)
 - Provides additional attributes:
   - Base temperature
@@ -103,9 +108,18 @@ Degree days can be used to:
 - Calculate climate statistics
 - Evaluate building energy efficiency
 
+## Requirements
+
+- Home Assistant Core: 2024.1.0 or later
+- HACS: 1.32.0 or later (if using HACS installation)
+
 ## Contributing
 
 Feel free to submit issues and pull requests for improvements.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a detailed list of changes and version history.
 
 ## License
 
