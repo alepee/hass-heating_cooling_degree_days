@@ -4,7 +4,8 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.event import async_track_state_change
 
 from .const import (
     CONF_BASE_TEMPERATURE,
@@ -13,12 +14,14 @@ from .const import (
     CONF_INCLUDE_WEEKLY,
     CONF_TEMPERATURE_SENSOR,
     CONF_TEMPERATURE_UNIT,
+    CONF_WEATHER_ENTITY,
     DEFAULT_INCLUDE_COOLING,
     DEFAULT_INCLUDE_MONTHLY,
     DEFAULT_INCLUDE_WEEKLY,
     DOMAIN,
 )
 from .coordinator import HDDDataUpdateCoordinator
+from .migrations import async_migrate_entity_unique_ids
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,6 +74,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             include_cooling=include_cooling,
             include_weekly=include_weekly,
             include_monthly=include_monthly,
+            weather_entity=entry.data.get(CONF_WEATHER_ENTITY),
         )
 
         # Load stored data before first refresh
@@ -83,6 +87,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         hass.data.setdefault(DOMAIN, {})
         hass.data[DOMAIN][entry.entry_id] = coordinator
+
+        # Migrate old entities with old unique_id format to new format
+        # This must be done BEFORE setting up platforms to avoid conflicts
+        await async_migrate_entity_unique_ids(hass, entry)
+
+        # Set up listener for weather entity changes if configured
+        weather_entity = entry.data.get(CONF_WEATHER_ENTITY)
+        if weather_entity:
+
+            @callback
+            def async_weather_state_changed(entity_id, old_state, new_state):
+                """Handle weather entity state changes."""
+                if new_state is None:
+                    return
+                # Trigger coordinator refresh when weather forecast updates
+                _LOGGER.debug(
+                    "Weather entity %s state changed, triggering coordinator refresh",
+                    entity_id,
+                )
+                hass.async_create_task(coordinator.async_request_refresh())
+
+            # Listen for changes to the weather entity
+            async_track_state_change(hass, weather_entity, async_weather_state_changed)
+            _LOGGER.debug(
+                "Registered state change listener for weather entity %s", weather_entity
+            )
 
         # Set up all the platforms
         _LOGGER.debug("Setting up platforms: %s", PLATFORMS)

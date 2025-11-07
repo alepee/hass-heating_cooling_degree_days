@@ -1,11 +1,12 @@
 """Heating and Cooling Degree Days calculation functions."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.history import get_significant_states
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -304,3 +305,242 @@ async def async_calculate_cdd(
 
     _LOGGER.debug("CDD calculation result: %.2f degree-days", result)
     return result
+
+
+def calculate_hdd_from_forecast(
+    forecast_data: list[dict], base_temp: float, start_time: datetime, end_time: datetime
+) -> float:
+    """Calculate HDD from weather forecast data.
+
+    Uses forecast entries that fall within the specified time range.
+    For each forecast entry, estimates HDD based on temperature and templow.
+
+    Args:
+        forecast_data: List of forecast dictionaries with 'datetime', 'temperature', 'templow'
+        base_temp: Base temperature for HDD calculation
+        start_time: Start of the period to calculate
+        end_time: End of the period to calculate
+
+    Returns:
+        float: Calculated HDD value rounded to 1 decimal place
+    """
+    if not forecast_data:
+        _LOGGER.debug("No forecast data provided for HDD calculation")
+        return 0
+
+    total_hdd = 0
+    used_forecasts = 0
+
+    for forecast in forecast_data:
+        # Get forecast datetime - handle both 'datetime' and 'dt' keys
+        forecast_dt = forecast.get("datetime") or forecast.get("dt")
+        if not forecast_dt:
+            continue
+
+        # Convert to datetime if it's a string
+        if isinstance(forecast_dt, str):
+            try:
+                forecast_dt = dt_util.parse_datetime(forecast_dt)
+            except (ValueError, TypeError):
+                _LOGGER.warning("Could not parse forecast datetime: %s", forecast_dt)
+                continue
+
+        # Skip if forecast is outside the time range
+        if forecast_dt < start_time or forecast_dt >= end_time:
+            continue
+
+        # Get temperature - for hourly forecasts, use temperature directly
+        # For daily forecasts, use templow and temperature average
+        temp = forecast.get("temperature")
+        templow = forecast.get("templow")
+
+        if temp is None:
+            continue
+
+        # For hourly forecasts, use temperature directly
+        # For daily forecasts (with templow), use average
+        if templow is not None:
+            avg_temp = (templow + temp) / 2
+        else:
+            avg_temp = temp
+
+        # Calculate HDD for this forecast period
+        # Assume each forecast represents approximately 1 hour
+        # (this is a simplification - actual duration may vary)
+        duration_days = 1.0 / 24.0  # 1 hour in days
+
+        # Calculate deficit from base temperature
+        deficit = max(0, base_temp - avg_temp)
+        forecast_hdd = deficit * duration_days
+
+        total_hdd += forecast_hdd
+        used_forecasts += 1
+
+    _LOGGER.debug(
+        "Calculated HDD from %d forecast entries: %.1f degree-days",
+        used_forecasts,
+        total_hdd,
+    )
+
+    return round(total_hdd, 1)
+
+
+def calculate_cdd_from_forecast(
+    forecast_data: list[dict], base_temp: float, start_time: datetime, end_time: datetime
+) -> float:
+    """Calculate CDD from weather forecast data.
+
+    Uses forecast entries that fall within the specified time range.
+    For each forecast entry, estimates CDD based on temperature and templow.
+
+    Args:
+        forecast_data: List of forecast dictionaries with 'datetime', 'temperature', 'templow'
+        base_temp: Base temperature for CDD calculation
+        start_time: Start of the period to calculate
+        end_time: End of the period to calculate
+
+    Returns:
+        float: Calculated CDD value rounded to 1 decimal place
+    """
+    if not forecast_data:
+        _LOGGER.debug("No forecast data provided for CDD calculation")
+        return 0
+
+    total_cdd = 0
+    used_forecasts = 0
+
+    for forecast in forecast_data:
+        # Get forecast datetime - handle both 'datetime' and 'dt' keys
+        forecast_dt = forecast.get("datetime") or forecast.get("dt")
+        if not forecast_dt:
+            continue
+
+        # Convert to datetime if it's a string
+        if isinstance(forecast_dt, str):
+            try:
+                forecast_dt = dt_util.parse_datetime(forecast_dt)
+            except (ValueError, TypeError):
+                _LOGGER.warning("Could not parse forecast datetime: %s", forecast_dt)
+                continue
+
+        # Skip if forecast is outside the time range
+        if forecast_dt < start_time or forecast_dt >= end_time:
+            continue
+
+        # Get temperature - for hourly forecasts, use temperature directly
+        # For daily forecasts, use templow and temperature average
+        temp = forecast.get("temperature")
+        templow = forecast.get("templow")
+
+        if temp is None:
+            continue
+
+        # For hourly forecasts, use temperature directly
+        # For daily forecasts (with templow), use average
+        if templow is not None:
+            avg_temp = (templow + temp) / 2
+        else:
+            avg_temp = temp
+
+        # Calculate CDD for this forecast period
+        # Assume each forecast represents approximately 1 hour
+        duration_days = 1.0 / 24.0  # 1 hour in days
+
+        # Calculate excess above base temperature
+        excess = max(0, avg_temp - base_temp)
+        forecast_cdd = excess * duration_days
+
+        total_cdd += forecast_cdd
+        used_forecasts += 1
+
+    _LOGGER.debug(
+        "Calculated CDD from %d forecast entries: %.1f degree-days",
+        used_forecasts,
+        total_cdd,
+    )
+
+    return round(total_cdd, 1)
+
+
+def combine_actual_and_forecast_hdd(
+    actual_readings: list[tuple[datetime, float]],
+    forecast_data: list[dict],
+    base_temp: float,
+    actual_end_time: datetime,
+    forecast_end_time: datetime,
+) -> float:
+    """Combine actual temperature readings with forecast data for HDD calculation.
+
+    Calculates HDD from actual readings up to actual_end_time, then adds
+    estimated HDD from forecast data for the remaining period.
+
+    Args:
+        actual_readings: List of (timestamp, temperature) tuples from actual sensor
+        forecast_data: List of forecast dictionaries
+        base_temp: Base temperature for HDD calculation
+        actual_end_time: End time for actual readings (start of forecast period)
+        forecast_end_time: End time for forecast period
+
+    Returns:
+        float: Combined HDD value rounded to 1 decimal place
+    """
+    # Calculate HDD from actual readings
+    actual_hdd = calculate_hdd_from_readings(actual_readings, base_temp)
+
+    # Calculate HDD from forecast for remaining period
+    forecast_hdd = calculate_hdd_from_forecast(
+        forecast_data, base_temp, actual_end_time, forecast_end_time
+    )
+
+    total_hdd = actual_hdd + forecast_hdd
+
+    _LOGGER.debug(
+        "Combined HDD: %.1f (actual) + %.1f (forecast) = %.1f",
+        actual_hdd,
+        forecast_hdd,
+        total_hdd,
+    )
+
+    return round(total_hdd, 1)
+
+
+def combine_actual_and_forecast_cdd(
+    actual_readings: list[tuple[datetime, float]],
+    forecast_data: list[dict],
+    base_temp: float,
+    actual_end_time: datetime,
+    forecast_end_time: datetime,
+) -> float:
+    """Combine actual temperature readings with forecast data for CDD calculation.
+
+    Calculates CDD from actual readings up to actual_end_time, then adds
+    estimated CDD from forecast data for the remaining period.
+
+    Args:
+        actual_readings: List of (timestamp, temperature) tuples from actual sensor
+        forecast_data: List of forecast dictionaries
+        base_temp: Base temperature for CDD calculation
+        actual_end_time: End time for actual readings (start of forecast period)
+        forecast_end_time: End time for forecast period
+
+    Returns:
+        float: Combined CDD value rounded to 1 decimal place
+    """
+    # Calculate CDD from actual readings
+    actual_cdd = calculate_cdd_from_readings(actual_readings, base_temp)
+
+    # Calculate CDD from forecast for remaining period
+    forecast_cdd = calculate_cdd_from_forecast(
+        forecast_data, base_temp, actual_end_time, forecast_end_time
+    )
+
+    total_cdd = actual_cdd + forecast_cdd
+
+    _LOGGER.debug(
+        "Combined CDD: %.1f (actual) + %.1f (forecast) = %.1f",
+        actual_cdd,
+        forecast_cdd,
+        total_cdd,
+    )
+
+    return round(total_cdd, 1)
