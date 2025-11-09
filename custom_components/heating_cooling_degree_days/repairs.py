@@ -25,14 +25,19 @@ async def async_create_fix_flow(
     data: dict[str, str | int | float | None] | None,
 ) -> RepairsFlow:
     """Create flow."""
-    if issue_id == ISSUE_WEATHER_NO_HOURLY_FORECAST:
-        return WeatherEntityRepairFlow(hass, data)
 
-    return ConfirmRepairFlow()
+    for repair_flow_cls in [WeatherNoHourlyForecastRepairFlow]:
+        if repair_flow_cls.is_issue_supported(issue_id):
+            return repair_flow_cls(hass, data)
 
 
-class WeatherEntityRepairFlow(RepairsFlow):
+class WeatherNoHourlyForecastRepairFlow(RepairsFlow):
     """Handler for weather entity repair flow."""
+
+    @staticmethod
+    def is_issue_supported(issue_id: str) -> bool:
+        """Return True if this flow supports the given issue_id."""
+        return issue_id == ISSUE_WEATHER_NO_HOURLY_FORECAST
 
     def __init__(
         self, hass: HomeAssistant, data: dict[str, str | int | float | None] | None
@@ -47,6 +52,12 @@ class WeatherEntityRepairFlow(RepairsFlow):
         self, user_input: dict[str, str] | None = None
     ) -> data_entry_flow.FlowResult:
         """Handle the first step of a fix flow."""
+        return await self.async_step_weather_no_hourly_forecast(user_input)
+
+    async def async_step_weather_no_hourly_forecast(
+        self, user_input: dict[str, str] | None = None
+    ) -> data_entry_flow.FlowResult:
+        """Handle the first step of a fix flow."""
         if not self.entry_id:
             return self.async_abort(reason="no_entry_id")
 
@@ -58,29 +69,24 @@ class WeatherEntityRepairFlow(RepairsFlow):
         if user_input is not None:
             action = user_input.get("action")
             if action == "select_new":
-                return await self.async_step_select_weather()
+                return await self.async_step_weather_no_hourly_forecast_select_weather()
             elif action == "remove":
-                return await self.async_step_confirm_remove()
+                return await self.async_step_weather_no_hourly_forecast_confirm_remove()
 
-        # Show form to choose action
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required("action", default="select_new"): vol.In(
-                        {
-                            "select_new": "Select a new weather entity",
-                            "remove": "Remove weather entity (disable forecast sensors)",
-                        }
-                    ),
-                }
-            ),
+        _LOGGER.debug("user_input: %s", user_input)
+
+        return self.async_show_menu(
+            step_id="weather_no_hourly_forecast",
+            menu_options=[
+                "weather_no_hourly_forecast_select_weather",
+                "weather_no_hourly_forecast_confirm_remove",
+            ],
             description_placeholders={
-                "current_entity": self.current_entity or "unknown",
+                "current_entity": self.current_entity,
             },
         )
 
-    async def async_step_select_weather(
+    async def async_step_weather_no_hourly_forecast_select_weather(
         self, user_input: dict[str, str] | None = None
     ) -> data_entry_flow.FlowResult:
         """Handle the weather entity selection step."""
@@ -116,7 +122,7 @@ class WeatherEntityRepairFlow(RepairsFlow):
                     return self.async_abort(reason="entry_not_found")
             else:
                 return self.async_show_form(
-                    step_id="select_weather",
+                    step_id="weather_no_hourly_forecast_select_weather",
                     data_schema=vol.Schema(
                         {
                             vol.Optional(CONF_WEATHER_ENTITY): selector.EntitySelector(
@@ -129,7 +135,7 @@ class WeatherEntityRepairFlow(RepairsFlow):
 
         # Show form to select new weather entity
         return self.async_show_form(
-            step_id="select_weather",
+            step_id="weather_no_hourly_forecast_select_weather",
             data_schema=vol.Schema(
                 {
                     vol.Optional(CONF_WEATHER_ENTITY): selector.EntitySelector(
@@ -172,7 +178,7 @@ class WeatherEntityRepairFlow(RepairsFlow):
         )
         return True
 
-    async def async_step_confirm_remove(
+    async def async_step_weather_no_hourly_forecast_confirm_remove(
         self, user_input: dict[str, str] | None = None
     ) -> data_entry_flow.FlowResult:
         """Handle the confirmation step for removing weather entity."""
@@ -200,7 +206,7 @@ class WeatherEntityRepairFlow(RepairsFlow):
 
         # Show confirmation form
         return self.async_show_form(
-            step_id="confirm_remove",
+            step_id="weather_no_hourly_forecast_confirm_remove",
             data_schema=vol.Schema({}),
             description_placeholders={
                 "current_entity": self.current_entity or "unknown",
