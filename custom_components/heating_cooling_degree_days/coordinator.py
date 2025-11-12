@@ -2,34 +2,47 @@
 
 import calendar
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import logging
 
+from homeassistant.components.weather import (
+    DOMAIN as WEATHER_DOMAIN,
+    WeatherEntityFeature,
+)
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .calculations import (
+    calculate_cdd_from_forecast,
     calculate_cdd_from_readings,
+    calculate_hdd_from_forecast,
     calculate_hdd_from_readings,
+    combine_actual_and_forecast_cdd,
+    combine_actual_and_forecast_hdd,
     get_temperature_readings,
 )
 from .const import (
     DOMAIN,
     SCAN_INTERVAL,
     SENSOR_TYPE_CDD_DAILY,
+    SENSOR_TYPE_CDD_ESTIMATED_TODAY,
+    SENSOR_TYPE_CDD_ESTIMATED_TOMORROW,
     SENSOR_TYPE_CDD_MONTHLY,
     SENSOR_TYPE_CDD_WEEKLY,
     SENSOR_TYPE_HDD_DAILY,
+    SENSOR_TYPE_HDD_ESTIMATED_TODAY,
+    SENSOR_TYPE_HDD_ESTIMATED_TOMORROW,
     SENSOR_TYPE_HDD_MONTHLY,
     SENSOR_TYPE_HDD_WEEKLY,
+    STORAGE_KEY,
+    STORAGE_VERSION,
 )
+from .repairs import ISSUE_WEATHER_NO_HOURLY_FORECAST
 
 _LOGGER = logging.getLogger(__name__)
-
-STORAGE_VERSION = 1
-STORAGE_KEY = f"{DOMAIN}_data"
 
 
 class HDDDataUpdateCoordinator(DataUpdateCoordinator):
@@ -45,6 +58,7 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
         include_cooling: bool = False,
         include_weekly: bool = True,
         include_monthly: bool = True,
+        weather_entity: str | None = None,
     ):
         """Initialize."""
         super().__init__(
@@ -60,6 +74,7 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
         self.include_cooling = include_cooling
         self.include_weekly = include_weekly
         self.include_monthly = include_monthly
+        self.weather_entity = weather_entity
         self.temperature_history = []
         self.daily_hdd_values = defaultdict(
             float
@@ -77,13 +92,14 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
 
         _LOGGER.info(
             "Initialized HDDDataUpdateCoordinator with sensor %s, base temp %.1f°%s, "
-            "cooling: %s, weekly: %s, monthly: %s",
+            "cooling: %s, weekly: %s, monthly: %s, weather: %s",
             temp_entity,
             base_temp,
             temperature_unit,
             "enabled" if include_cooling else "disabled",
             "enabled" if include_weekly else "disabled",
             "enabled" if include_monthly else "disabled",
+            weather_entity if weather_entity else "none",
         )
 
     async def async_load_stored_data(self):
@@ -282,7 +298,233 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
                 result[SENSOR_TYPE_CDD_MONTHLY] = monthly_cdd
                 _LOGGER.debug("Calculated monthly CDD: %.2f", monthly_cdd)
 
+        # Calculate forecast-based estimates if weather entity is configured
+        if self.weather_entity:
+            forecast_data = await self._get_weather_forecast()
+            if forecast_data:
+                # Get actual temperature readings for today (from midnight to now)
+                today_readings = await get_temperature_readings(
+                    self.hass,
+                    today_start,
+                    now,
+                    self.temp_entity,
+                )
+
+                # Calculate estimated HDD/CDD for today (actual + forecast)
+                today_estimated_hdd, today_estimated_cdd = (
+                    self._calculate_today_estimated(
+                        now, today_start, today_readings, forecast_data
+                    )
+                )
+                result[SENSOR_TYPE_HDD_ESTIMATED_TODAY] = today_estimated_hdd
+                if self.include_cooling:
+                    result[SENSOR_TYPE_CDD_ESTIMATED_TODAY] = today_estimated_cdd
+
+                # Calculate estimated HDD/CDD for tomorrow (forecast only)
+                tomorrow_estimated_hdd, tomorrow_estimated_cdd = (
+                    self._calculate_tomorrow_estimated(now, forecast_data)
+                )
+                result[SENSOR_TYPE_HDD_ESTIMATED_TOMORROW] = tomorrow_estimated_hdd
+                if self.include_cooling:
+                    result[SENSOR_TYPE_CDD_ESTIMATED_TOMORROW] = tomorrow_estimated_cdd
+            else:
+                # No forecast data available, set to None
+                result[SENSOR_TYPE_HDD_ESTIMATED_TODAY] = None
+                result[SENSOR_TYPE_HDD_ESTIMATED_TOMORROW] = None
+                if self.include_cooling:
+                    result[SENSOR_TYPE_CDD_ESTIMATED_TODAY] = None
+                    result[SENSOR_TYPE_CDD_ESTIMATED_TOMORROW] = None
+        else:
+            # No weather entity configured, delete any existing issue
+            _LOGGER.debug("No weather entity configured, deleting issue")
+            ir.async_delete_issue(self.hass, DOMAIN, ISSUE_WEATHER_NO_HOURLY_FORECAST)
+
         return result
+
+    async def _get_weather_forecast(self) -> list[dict] | None:
+        """Get weather forecast data from the weather entity.
+
+        Retrieves hourly forecast data by calling async_forecast_hourly() directly
+        on the weather entity. Verifies that the entity supports hourly forecasts
+        by checking the supported_features attribute in the entity state.
+
+        Returns:
+            List of forecast dictionaries with 'datetime', 'temperature', and 'templow'
+            keys, or None if unavailable or if the entity doesn't support hourly forecasts.
+
+        """
+        if not self.weather_entity:
+            return None
+
+        try:
+            # Check if the entity supports hourly forecasts via state attributes
+            state = self.hass.states.get(self.weather_entity)
+            if not state:
+                _LOGGER.warning("Weather entity %s not found", self.weather_entity)
+                return None
+
+            # Get supported features from state attributes
+            features = state.attributes.get("supported_features", 0)
+            if not (features & WeatherEntityFeature.FORECAST_HOURLY):
+                _LOGGER.warning(
+                    "Weather entity %s does not support hourly forecasts (features: %s)",
+                    self.weather_entity,
+                    features,
+                )
+                # Create a repair issue to notify the user and allow them to fix it
+                ir.async_create_issue(
+                    self.hass,
+                    DOMAIN,
+                    ISSUE_WEATHER_NO_HOURLY_FORECAST,
+                    is_fixable=True,
+                    is_persistent=True,
+                    severity=ir.IssueSeverity.ERROR,
+                    translation_key="weather_no_hourly_forecast",
+                    translation_placeholders={
+                        "entity_id": self.weather_entity,
+                    },
+                    data={
+                        "entry_id": self.entry_id,
+                        "entity_id": self.weather_entity,
+                    },
+                )
+                return None
+
+            # Get the weather entity from the component to call async_forecast_hourly
+            component = self.hass.data.get(WEATHER_DOMAIN)
+            if not component:
+                _LOGGER.warning(
+                    "Weather component is not available. "
+                    "This may happen if the weather component is not fully loaded."
+                )
+                return None
+
+            # Find the weather entity
+            weather_entity_obj = component.get_entity(self.weather_entity)
+            if not weather_entity_obj:
+                _LOGGER.warning(
+                    "Weather entity %s not found in component", self.weather_entity
+                )
+                return None
+
+            # Call the async_forecast_hourly method directly
+            # This returns a list of Forecast TypedDict objects (which are dictionaries)
+            forecast_list = await weather_entity_obj.async_forecast_hourly()
+            if not forecast_list:
+                _LOGGER.warning(
+                    "No hourly forecast data returned from %s", self.weather_entity
+                )
+                return None
+
+            # Forecast is already a list of dictionaries (TypedDict)
+            # Extract the fields we need
+            forecast = []
+            for forecast_item in forecast_list:
+                forecast_dict = {
+                    "datetime": forecast_item.get("datetime"),
+                    "temperature": forecast_item.get("native_temperature"),
+                    "templow": forecast_item.get("native_templow"),
+                }
+                # Only add if we have the required fields
+                if (
+                    forecast_dict["datetime"]
+                    and forecast_dict["temperature"] is not None
+                ):
+                    forecast.append(forecast_dict)
+
+            _LOGGER.debug(
+                "Retrieved %d hourly forecast entries from %s",
+                len(forecast),
+                self.weather_entity,
+            )
+
+            # If we successfully got forecast data, delete any existing issue
+            # (in case it was fixed by changing the entity or the entity was updated)
+            ir.async_delete_issue(self.hass, DOMAIN, ISSUE_WEATHER_NO_HOURLY_FORECAST)
+
+            return forecast
+
+        except Exception as ex:
+            _LOGGER.error(
+                "Error fetching weather forecast from %s: %s",
+                self.weather_entity,
+                str(ex),
+            )
+            return None
+
+    def _calculate_today_estimated(
+        self,
+        now: datetime,
+        today_start: datetime,
+        today_readings: list[tuple[datetime, float]],
+        forecast_data: list[dict],
+    ) -> tuple[float, float]:
+        """Calculate estimated HDD/CDD for today combining actual and forecast data.
+
+        Args:
+            now: Current datetime
+            today_start: Start of today (midnight)
+            today_readings: List of (timestamp, temperature) tuples for today
+            forecast_data: List of forecast dictionaries
+
+        Returns:
+            Tuple of (estimated_hdd, estimated_cdd) for today.
+
+        """
+        # Calculate end of today (midnight tomorrow)
+        tomorrow_start = today_start + timedelta(days=1)
+
+        # Combine actual readings with forecast
+        estimated_hdd = combine_actual_and_forecast_hdd(
+            today_readings,
+            forecast_data,
+            self.base_temp,
+            now,
+            tomorrow_start,
+        )
+
+        estimated_cdd = 0.0
+        if self.include_cooling:
+            estimated_cdd = combine_actual_and_forecast_cdd(
+                today_readings,
+                forecast_data,
+                self.base_temp,
+                now,
+                tomorrow_start,
+            )
+
+        return (estimated_hdd, estimated_cdd)
+
+    def _calculate_tomorrow_estimated(
+        self, now: datetime, forecast_data: list[dict]
+    ) -> tuple[float, float]:
+        """Calculate estimated HDD/CDD for tomorrow using forecast data only.
+
+        Args:
+            now: Current datetime
+            forecast_data: List of forecast dictionaries
+
+        Returns:
+            Tuple of (estimated_hdd, estimated_cdd) for tomorrow.
+
+        """
+        # Calculate start and end of tomorrow
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow_start = today_start + timedelta(days=1)
+        tomorrow_end = tomorrow_start + timedelta(days=1)
+
+        # Calculate HDD from forecast for tomorrow
+        estimated_hdd = calculate_hdd_from_forecast(
+            forecast_data, self.base_temp, tomorrow_start, tomorrow_end
+        )
+
+        estimated_cdd = 0.0
+        if self.include_cooling:
+            estimated_cdd = calculate_cdd_from_forecast(
+                forecast_data, self.base_temp, tomorrow_start, tomorrow_end
+            )
+
+        return (estimated_hdd, estimated_cdd)
 
     def _cleanup_old_data(self, days_to_keep):
         """Remove old data from daily values history."""

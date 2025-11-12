@@ -33,6 +33,27 @@ This method provides more accurate results than simple daily averages, especiall
 
 **Note**: All degree days values are rounded to 1 decimal place (e.g., `12.3°C·d`) for optimal readability and practical use.
 
+## Forecast Estimates
+
+When a weather entity with hourly forecast support is configured, the integration can provide estimated degree days for the current day and tomorrow:
+
+### How Forecast Estimates Work
+
+1. **Estimated Today**: 
+   - Combines actual temperature readings from your sensor (for the hours that have already passed) with hourly weather forecast data (for the remaining hours of the day)
+   - The estimate becomes more accurate as the day progresses and more actual data becomes available
+   - Automatically updates when the weather forecast changes
+
+2. **Estimated Tomorrow**:
+   - Based entirely on hourly weather forecast data for the next 24 hours
+   - Updates automatically when new forecast data is available
+
+### Requirements for Forecast Sensors
+
+- A weather entity that supports hourly forecasts (e.g., OpenWeatherMap, Met.no, etc.)
+- The weather entity must be configured in Home Assistant before adding it to this integration
+- Forecast sensors are automatically created when a compatible weather entity is selected during configuration
+
 ## Installation
 
 ### Using HACS (recommended)
@@ -63,6 +84,7 @@ This method provides more accurate results than simple daily averages, especiall
    - Set the base temperature (defaults are 18°C or 65°F)
    - Enable/disable Cooling Degree Days calculation
    - Choose whether to include weekly and monthly sensors
+   - (Optional) Select a weather entity that supports hourly forecasts for 24h and 48h estimates
 
 ## Features
 
@@ -73,6 +95,7 @@ This method provides more accurate results than simple daily averages, especiall
 - Uses full temperature history with numerical integration for accurate calculations
 - Values displayed with 1 decimal place precision for optimal readability
 - Flexibility to enable only the sensors you need (daily, weekly, monthly)
+- **Weather forecast support**: Optional 24h and 48h degree days estimates based on weather forecasts
 - Provides additional attributes:
   - Base temperature
   - Date range for the calculation
@@ -92,11 +115,21 @@ The integration creates the following sensors depending on your configuration:
 - `sensor.cdd_weekly`: CDD for the current week (optional)
 - `sensor.cdd_monthly`: CDD for the current month (optional)
 
+### Forecast sensors (when weather entity is configured):
+- `sensor.hdd_estimated_today`: Estimated HDD for the current day (combines actual readings with forecast)
+- `sensor.hdd_estimated_tomorrow`: Estimated HDD for tomorrow (based on forecast only)
+- `sensor.cdd_estimated_today`: Estimated CDD for the current day (when cooling is enabled)
+- `sensor.cdd_estimated_tomorrow`: Estimated CDD for tomorrow (when cooling is enabled)
+
+**Note**: Forecast sensors require a weather entity that supports hourly forecasts. The "today" estimates refine throughout the day as actual temperature sensor data becomes available, combining past readings with forecast data for the remaining hours.
+
 ## Time Periods
 
 - **Daily**: Represents the previous completed day
 - **Weekly**: Represents the current week from Monday to Sunday
 - **Monthly**: Represents the current month from 1st to last day
+- **Estimated Today**: Combines actual temperature readings (for the past part of the day) with weather forecast data (for the remaining hours). The estimate refines throughout the day as more actual data becomes available.
+- **Estimated Tomorrow**: Based solely on weather forecast data for the next 24 hours
 
 ## Example Usage
 

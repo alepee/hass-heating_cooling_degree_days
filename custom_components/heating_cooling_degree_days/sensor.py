@@ -20,9 +20,13 @@ from .const import (
     ATTR_MEAN_TEMPERATURE,
     DOMAIN,
     SENSOR_TYPE_CDD_DAILY,
+    SENSOR_TYPE_CDD_ESTIMATED_TODAY,
+    SENSOR_TYPE_CDD_ESTIMATED_TOMORROW,
     SENSOR_TYPE_CDD_MONTHLY,
     SENSOR_TYPE_CDD_WEEKLY,
     SENSOR_TYPE_HDD_DAILY,
+    SENSOR_TYPE_HDD_ESTIMATED_TODAY,
+    SENSOR_TYPE_HDD_ESTIMATED_TOMORROW,
     SENSOR_TYPE_HDD_MONTHLY,
     SENSOR_TYPE_HDD_WEEKLY,
 )
@@ -76,6 +80,29 @@ async def async_setup_entry(
     else:
         _LOGGER.debug("CDD sensors not enabled in configuration")
 
+    # Add forecast sensors if weather entity is configured
+    if coordinator.weather_entity:
+        sensors.append(DegreeDegreeSensor(coordinator, SENSOR_TYPE_HDD_ESTIMATED_TODAY))
+        _LOGGER.debug("Created HDD estimated today sensor")
+
+        sensors.append(
+            DegreeDegreeSensor(coordinator, SENSOR_TYPE_HDD_ESTIMATED_TOMORROW)
+        )
+        _LOGGER.debug("Created HDD estimated tomorrow sensor")
+
+        if coordinator.include_cooling:
+            sensors.append(
+                DegreeDegreeSensor(coordinator, SENSOR_TYPE_CDD_ESTIMATED_TODAY)
+            )
+            _LOGGER.debug("Created CDD estimated today sensor")
+
+            sensors.append(
+                DegreeDegreeSensor(coordinator, SENSOR_TYPE_CDD_ESTIMATED_TOMORROW)
+            )
+            _LOGGER.debug("Created CDD estimated tomorrow sensor")
+    else:
+        _LOGGER.debug("Forecast sensors not enabled (no weather entity configured)")
+
     async_add_entities(sensors)
     _LOGGER.info("Added %d degree days sensors", len(sensors))
 
@@ -94,7 +121,8 @@ class DegreeDegreeSensor(CoordinatorEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self.sensor_type = sensor_type
-        self._attr_unique_id = f"{DOMAIN}_{sensor_type}"
+        # Include entry_id in unique_id to avoid conflicts with multiple instances
+        self._attr_unique_id = f"{DOMAIN}_{coordinator.entry_id}_{sensor_type}"
         self._attr_translation_key = sensor_type
 
         # Set entity_id based on type (HDD or CDD)
@@ -133,8 +161,18 @@ class DegreeDegreeSensor(CoordinatorEntity, SensorEntity):
             return None
 
         value = self.coordinator.data[self.sensor_type]
-        # Values are already rounded to 1 decimal place in calculations.py
-        # No need for additional rounding here
+
+        # Handle None values (e.g., when forecast data is unavailable)
+        if value is None:
+            _LOGGER.debug(
+                "No data available for %s (forecast may be unavailable)",
+                self.entity_id,
+            )
+            return None
+
+        # Ensure value is rounded to 1 decimal place
+        if isinstance(value, (int, float)):
+            value = round(float(value), 1)
 
         _LOGGER.debug(
             "Returning value for %s: %.1f %s",
@@ -182,6 +220,21 @@ class DegreeDegreeSensor(CoordinatorEntity, SensorEntity):
             _, last_day = calendar.monthrange(today.year, today.month)
             month_end = today.replace(day=last_day)
             return f"{month_start} to {month_end}"
+
+        elif self.sensor_type in [
+            SENSOR_TYPE_HDD_ESTIMATED_TODAY,
+            SENSOR_TYPE_CDD_ESTIMATED_TODAY,
+        ]:
+            # Estimated for today (combines actual + forecast)
+            return f"{today} (estimated)"
+
+        elif self.sensor_type in [
+            SENSOR_TYPE_HDD_ESTIMATED_TOMORROW,
+            SENSOR_TYPE_CDD_ESTIMATED_TOMORROW,
+        ]:
+            # Estimated for tomorrow (forecast only)
+            tomorrow = today + timedelta(days=1)
+            return f"{tomorrow} (estimated)"
 
         return "Unknown period"
 

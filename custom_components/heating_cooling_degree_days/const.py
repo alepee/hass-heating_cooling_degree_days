@@ -6,12 +6,16 @@ from homeassistant.const import UnitOfTemperature
 
 DOMAIN = "heating_cooling_degree_days"
 
+STORAGE_VERSION = 1
+STORAGE_KEY = f"{DOMAIN}_data"
+
 CONF_TEMPERATURE_SENSOR = "temperature_sensor"
 CONF_BASE_TEMPERATURE = "base_temperature"
 CONF_TEMPERATURE_UNIT = "temperature_unit"
 CONF_INCLUDE_COOLING = "include_cooling"
 CONF_INCLUDE_WEEKLY = "include_weekly"
 CONF_INCLUDE_MONTHLY = "include_monthly"
+CONF_WEATHER_ENTITY = "weather_entity"
 
 DEFAULT_BASE_TEMPERATURE_CELSIUS = 18.0
 DEFAULT_BASE_TEMPERATURE_FAHRENHEIT = 65.0
@@ -42,6 +46,12 @@ SENSOR_TYPE_MONTHLY = SENSOR_TYPE_HDD_MONTHLY
 SENSOR_TYPE_CDD_DAILY = "cdd_daily"
 SENSOR_TYPE_CDD_WEEKLY = "cdd_weekly"
 SENSOR_TYPE_CDD_MONTHLY = "cdd_monthly"
+
+# Forecast Sensor types
+SENSOR_TYPE_HDD_ESTIMATED_TODAY = "hdd_estimated_today"
+SENSOR_TYPE_CDD_ESTIMATED_TODAY = "cdd_estimated_today"
+SENSOR_TYPE_HDD_ESTIMATED_TOMORROW = "hdd_estimated_tomorrow"
+SENSOR_TYPE_CDD_ESTIMATED_TOMORROW = "cdd_estimated_tomorrow"
 
 # Attributes
 ATTR_BASE_TEMPERATURE = "base_temperature"
