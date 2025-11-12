@@ -1,6 +1,6 @@
 """Heating and Cooling Degree Days calculation functions."""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 
 from homeassistant.components.recorder import get_instance
@@ -115,6 +115,7 @@ def calculate_cdd_from_readings(
 
     Returns:
         float: Calculated CDD value rounded to 1 decimal place
+
     """
     if not readings:
         _LOGGER.debug("No temperature readings provided for CDD calculation")
@@ -308,7 +309,10 @@ async def async_calculate_cdd(
 
 
 def calculate_hdd_from_forecast(
-    forecast_data: list[dict], base_temp: float, start_time: datetime, end_time: datetime
+    forecast_data: list[dict],
+    base_temp: float,
+    start_time: datetime,
+    end_time: datetime,
 ) -> float:
     """Calculate HDD from weather forecast data.
 
@@ -323,6 +327,7 @@ def calculate_hdd_from_forecast(
 
     Returns:
         float: Calculated HDD value rounded to 1 decimal place
+
     """
     if not forecast_data:
         _LOGGER.debug("No forecast data provided for HDD calculation")
@@ -386,7 +391,10 @@ def calculate_hdd_from_forecast(
 
 
 def calculate_cdd_from_forecast(
-    forecast_data: list[dict], base_temp: float, start_time: datetime, end_time: datetime
+    forecast_data: list[dict],
+    base_temp: float,
+    start_time: datetime,
+    end_time: datetime,
 ) -> float:
     """Calculate CDD from weather forecast data.
 
@@ -401,6 +409,7 @@ def calculate_cdd_from_forecast(
 
     Returns:
         float: Calculated CDD value rounded to 1 decimal place
+
     """
     if not forecast_data:
         _LOGGER.debug("No forecast data provided for CDD calculation")
@@ -483,6 +492,7 @@ def combine_actual_and_forecast_hdd(
 
     Returns:
         float: Combined HDD value rounded to 1 decimal place
+
     """
     # Calculate HDD from actual readings
     actual_hdd = calculate_hdd_from_readings(actual_readings, base_temp)
@@ -525,6 +535,7 @@ def combine_actual_and_forecast_cdd(
 
     Returns:
         float: Combined CDD value rounded to 1 decimal place
+
     """
     # Calculate CDD from actual readings
     actual_cdd = calculate_cdd_from_readings(actual_readings, base_temp)

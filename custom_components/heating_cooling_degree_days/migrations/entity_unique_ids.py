@@ -36,7 +36,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_migrate_entity_unique_ids(
-    hass: HomeAssistant, entry: ConfigEntry
+    hass: HomeAssistant, config_entry: ConfigEntry
 ) -> None:
     """Migrate old entities with old unique_id format to new format.
 
@@ -78,10 +78,10 @@ async def async_migrate_entity_unique_ids(
             if old_entity_entry:
                 # Only migrate if it belongs to this config entry
                 # We check config_entry_id to ensure we only migrate entities from this entry
-                if old_entity_entry.config_entry_id == entry.entry_id:
+                if old_entity_entry.config_entry_id == config_entry.entry_id:
                     # Extract sensor_type from old_unique_id (format: {DOMAIN}_{sensor_type})
                     sensor_type = old_unique_id.replace(f"{DOMAIN}_", "", 1)
-                    new_unique_id = f"{DOMAIN}_{entry.entry_id}_{sensor_type}"
+                    new_unique_id = f"{DOMAIN}_{config_entry.entry_id}_{sensor_type}"
 
                     # Check if new entity with new format already exists
                     new_entity_id = ent_reg.async_get_entity_id(
@@ -124,6 +124,5 @@ async def async_migrate_entity_unique_ids(
         _LOGGER.info(
             "Migration completed: migrated %d entities to new unique_id format for entry %s",
             migrated_count,
-            entry.entry_id,
+            config_entry.entry_id,
         )
-

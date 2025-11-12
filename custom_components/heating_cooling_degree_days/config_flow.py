@@ -35,6 +35,7 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Heating & Cooling Degree Days."""
 
     VERSION = 1
+    MINOR_VERSION = 2
 
     def is_matching(self, other_flow: config_entries.ConfigFlow) -> bool:
         """Return True if other_flow matches this flow."""

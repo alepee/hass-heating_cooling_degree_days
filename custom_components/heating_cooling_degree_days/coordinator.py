@@ -37,13 +37,12 @@ from .const import (
     SENSOR_TYPE_HDD_ESTIMATED_TOMORROW,
     SENSOR_TYPE_HDD_MONTHLY,
     SENSOR_TYPE_HDD_WEEKLY,
+    STORAGE_KEY,
+    STORAGE_VERSION,
 )
 from .repairs import ISSUE_WEATHER_NO_HOURLY_FORECAST
 
 _LOGGER = logging.getLogger(__name__)
-
-STORAGE_VERSION = 1
-STORAGE_KEY = f"{DOMAIN}_data"
 
 
 class HDDDataUpdateCoordinator(DataUpdateCoordinator):
@@ -101,29 +100,6 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
             "enabled" if include_weekly else "disabled",
             "enabled" if include_monthly else "disabled",
             weather_entity if weather_entity else "none",
-        )
-
-        ir.async_delete_issue(
-            self.hass,
-            DOMAIN,
-            ISSUE_WEATHER_NO_HOURLY_FORECAST,
-        )
-
-        ir.async_create_issue(
-            self.hass,
-            DOMAIN,
-            ISSUE_WEATHER_NO_HOURLY_FORECAST,
-            is_fixable=True,
-            is_persistent=True,
-            severity=ir.IssueSeverity.ERROR,
-            translation_key="weather_no_hourly_forecast",
-            translation_placeholders={
-                "entity_id": self.weather_entity,
-            },
-            data={
-                "entry_id": self.entry_id,
-                "entity_id": self.weather_entity,
-            },
         )
 
     async def async_load_stored_data(self):
@@ -360,8 +336,8 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
                     result[SENSOR_TYPE_CDD_ESTIMATED_TOMORROW] = None
         else:
             # No weather entity configured, delete any existing issue
-            # TODO: ir.async_delete_issue(self.hass, DOMAIN, ISSUE_WEATHER_NO_HOURLY_FORECAST)
-            print("No weather entity configured, deleting issue")
+            _LOGGER.debug("No weather entity configured, deleting issue")
+            ir.async_delete_issue(self.hass, DOMAIN, ISSUE_WEATHER_NO_HOURLY_FORECAST)
 
         return result
 
@@ -464,7 +440,7 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
 
             # If we successfully got forecast data, delete any existing issue
             # (in case it was fixed by changing the entity or the entity was updated)
-            # TODO: ir.async_delete_issue(self.hass, DOMAIN, ISSUE_WEATHER_NO_HOURLY_FORECAST)
+            ir.async_delete_issue(self.hass, DOMAIN, ISSUE_WEATHER_NO_HOURLY_FORECAST)
 
             return forecast
 

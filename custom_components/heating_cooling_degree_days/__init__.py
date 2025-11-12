@@ -18,6 +18,8 @@ from .const import (
     DEFAULT_INCLUDE_COOLING,
     DEFAULT_INCLUDE_MONTHLY,
     DEFAULT_INCLUDE_WEEKLY,
+    DEFAULT_NAME_WITH_HEATING,
+    DEFAULT_NAME_WITH_HEATING_AND_COOLING,
     DOMAIN,
 )
 from .coordinator import HDDDataUpdateCoordinator
@@ -27,9 +29,21 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.SENSOR]
 
-# Simple fixed titles in English
-TITLE_STANDARD = "Heating Degree Days"
-TITLE_WITH_COOLING = "Heating & Cooling Degree Days"
+
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate a config entry."""
+
+    _LOGGER.debug(
+        "Migrating configuration from version %s.%s",
+        config_entry.version,
+        config_entry.minor_version,
+    )
+
+    if config_entry.version == 1:
+        if config_entry.minor_version < 2:
+            await async_migrate_entity_unique_ids(hass, config_entry)
+
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -45,7 +59,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     include_monthly = entry.data.get(CONF_INCLUDE_MONTHLY, DEFAULT_INCLUDE_MONTHLY)
 
     # Use simple fixed titles based on configuration
-    title = TITLE_WITH_COOLING if include_cooling else TITLE_STANDARD
+    title = (
+        DEFAULT_NAME_WITH_HEATING_AND_COOLING
+        if include_cooling
+        else DEFAULT_NAME_WITH_HEATING
+    )
 
     # Update the entry title if needed
     if entry.title != title:
@@ -87,10 +105,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         hass.data.setdefault(DOMAIN, {})
         hass.data[DOMAIN][entry.entry_id] = coordinator
-
-        # Migrate old entities with old unique_id format to new format
-        # This must be done BEFORE setting up platforms to avoid conflicts
-        await async_migrate_entity_unique_ids(hass, entry)
 
         # Set up listener for weather entity changes if configured
         weather_entity = entry.data.get(CONF_WEATHER_ENTITY)

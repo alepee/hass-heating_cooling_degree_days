@@ -6,6 +6,9 @@ from homeassistant.const import UnitOfTemperature
 
 DOMAIN = "heating_cooling_degree_days"
 
+STORAGE_VERSION = 1
+STORAGE_KEY = f"{DOMAIN}_data"
+
 CONF_TEMPERATURE_SENSOR = "temperature_sensor"
 CONF_BASE_TEMPERATURE = "base_temperature"
 CONF_TEMPERATURE_UNIT = "temperature_unit"
