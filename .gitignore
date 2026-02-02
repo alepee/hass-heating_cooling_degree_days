@@ -1,6 +1,9 @@
 # Private files
 private/
 
+# Local release notes (kept for copy-paste to GitHub release)
+.github/RELEASE_NOTE_*.md
+
 # Home Assistant config
 config/
 

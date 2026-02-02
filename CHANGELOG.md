@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-02-02
+
+### Fixed
+- Fixed issue #76: Negative temperatures (e.g. below 0°C) are now correctly accepted in sensor validation; validation uses float conversion instead of isdigit() so winter temperatures no longer cause failed or skipped updates
+
 ## [1.0.2] - 2025-11-05
 
 ### Added
