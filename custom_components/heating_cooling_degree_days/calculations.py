@@ -1,4 +1,9 @@
-"""Heating and Cooling Degree Days calculation functions."""
+"""Heating and Cooling Degree Days calculation functions.
+
+This module provides the interface between Home Assistant and the pure domain logic.
+- Pure calculation functions are imported from domain.py
+- HA-specific functions (async, using recorder) are defined here
+"""
 
 from datetime import datetime
 import logging
@@ -7,178 +12,21 @@ from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.history import get_significant_states
 from homeassistant.core import HomeAssistant
 
+# Import pure domain functions (no HA dependencies)
+from .domain import (
+    calculate_hdd_from_readings,
+    calculate_cdd_from_readings,
+)
+
+__all__ = [
+    "calculate_hdd_from_readings",
+    "calculate_cdd_from_readings",
+    "get_temperature_readings",
+    "async_calculate_hdd",
+    "async_calculate_cdd",
+]
+
 _LOGGER = logging.getLogger(__name__)
-
-
-def calculate_hdd_from_readings(
-    readings: list[tuple[datetime, float]], base_temp: float
-) -> float:
-    """Calculate HDD using numerical integration of temperature data.
-
-    The integration method consists of:
-    1. Collecting detailed temperature readings throughout the day
-    2. For each time interval, calculating the duration during which the temperature
-       was below the base temperature
-    3. Calculating the average temperature difference from the base temperature for that interval
-    4. Multiplying the duration and temperature difference to get the degree-days for that interval
-    5. Summing all interval degree-days to get the total for the day
-
-    Args:
-        readings: List of tuples containing (timestamp, temperature)
-        base_temp: Base temperature for HDD calculation
-
-    Returns:
-        float: Calculated HDD value
-
-    """
-    if not readings:
-        _LOGGER.debug("No temperature readings provided for HDD calculation")
-        return 0
-
-    # Sort readings by timestamp
-    readings.sort(key=lambda x: x[0])
-
-    start_time = readings[0][0]
-    end_time = readings[-1][0]
-    total_duration = (end_time - start_time).total_seconds() / 3600  # in hours
-
-    _LOGGER.debug(
-        "Calculating HDD from %d readings spanning %.1f hours (%.2f days)",
-        len(readings),
-        total_duration,
-        total_duration / 24,
-    )
-
-    # Calculate HDD using numerical integration
-    total_hdd = 0
-    significant_intervals = 0  # Count intervals with temperature below base temp
-
-    for i in range(len(readings) - 1):
-        current_time, current_temp = readings[i]
-        next_time, next_temp = readings[i + 1]
-
-        # 2. Calculate the interval duration in days
-        interval_days = (next_time - current_time).total_seconds() / (24 * 3600)
-
-        # Skip extremely short intervals (less than 1 minute) to avoid numerical issues
-        if interval_days < 0.0007:  # ~1 minute in days
-            continue
-
-        # 3. Calculate the average temperature difference over the interval
-        # using trapezoidal rule for integration
-        current_deficit = max(0, base_temp - current_temp)
-        next_deficit = max(0, base_temp - next_temp)
-        avg_deficit = (current_deficit + next_deficit) / 2
-
-        # 4. Multiply duration and temperature difference
-        interval_hdd = avg_deficit * interval_days
-
-        # 5. Add to total
-        total_hdd += interval_hdd
-
-        # Track significant intervals for debugging
-        if avg_deficit > 0:
-            significant_intervals += 1
-
-    # Log the percentage of intervals that contributed to the HDD
-    if len(readings) > 1:
-        contribution_percentage = (significant_intervals / (len(readings) - 1)) * 100
-        _LOGGER.debug(
-            "HDD calculation: %.1f degree-days from %d/%d intervals (%.1f%% contributed)",
-            total_hdd,
-            significant_intervals,
-            len(readings) - 1,
-            contribution_percentage,
-        )
-
-    # Round to 1 decimal place to avoid excessive precision
-    return round(total_hdd, 1)
-
-
-def calculate_cdd_from_readings(
-    readings: list[tuple[datetime, float]], base_temp: float
-) -> float:
-    """Calculate CDD using numerical integration of temperature data.
-
-    The integration method consists of:
-    1. Collecting detailed temperature readings throughout the day
-    2. For each time interval, calculating the duration during which the temperature
-       was above the base temperature
-    3. Calculating the average temperature difference from the base temperature for that interval
-    4. Multiplying the duration and temperature difference to get the degree-days for that interval
-    5. Summing all interval degree-days to get the total for the day
-
-    Args:
-        readings: List of tuples containing (timestamp, temperature)
-        base_temp: Base temperature for CDD calculation
-
-    Returns:
-        float: Calculated CDD value rounded to 1 decimal place
-
-    """
-    if not readings:
-        _LOGGER.debug("No temperature readings provided for CDD calculation")
-        return 0
-
-    # Sort readings by timestamp
-    readings.sort(key=lambda x: x[0])
-
-    start_time = readings[0][0]
-    end_time = readings[-1][0]
-    total_duration = (end_time - start_time).total_seconds() / 3600  # in hours
-
-    _LOGGER.debug(
-        "Calculating CDD from %d readings spanning %.1f hours (%.2f days)",
-        len(readings),
-        total_duration,
-        total_duration / 24,
-    )
-
-    # Calculate CDD using numerical integration
-    total_cdd = 0
-    significant_intervals = 0  # Count intervals with temperature above base temp
-
-    for i in range(len(readings) - 1):
-        current_time, current_temp = readings[i]
-        next_time, next_temp = readings[i + 1]
-
-        # 2. Calculate the interval duration in days
-        interval_days = (next_time - current_time).total_seconds() / (24 * 3600)
-
-        # Skip extremely short intervals (less than 1 minute) to avoid numerical issues
-        if interval_days < 0.0007:  # ~1 minute in days
-            continue
-
-        # 3. Calculate the average temperature difference over the interval
-        # using trapezoidal rule for integration
-        # For CDD, we measure how much the temperature exceeds the base temperature
-        current_excess = max(0, current_temp - base_temp)
-        next_excess = max(0, next_temp - base_temp)
-        avg_excess = (current_excess + next_excess) / 2
-
-        # 4. Multiply duration and temperature difference
-        interval_cdd = avg_excess * interval_days
-
-        # 5. Add to total
-        total_cdd += interval_cdd
-
-        # Track significant intervals for debugging
-        if avg_excess > 0:
-            significant_intervals += 1
-
-    # Log the percentage of intervals that contributed to the CDD
-    if len(readings) > 1:
-        contribution_percentage = (significant_intervals / (len(readings) - 1)) * 100
-        _LOGGER.debug(
-            "CDD calculation: %.1f degree-days from %d/%d intervals (%.1f%% contributed)",
-            total_cdd,
-            significant_intervals,
-            len(readings) - 1,
-            contribution_percentage,
-        )
-
-    # Round to 1 decimal place to avoid excessive precision
-    return round(total_cdd, 1)
 
 
 async def get_temperature_readings(
@@ -196,7 +44,7 @@ async def get_temperature_readings(
         entity_id: Entity ID of the temperature sensor
 
     Returns:
-        List[Tuple[datetime, float]]: List of (timestamp, temperature) tuples
+        List of (timestamp, temperature) tuples
 
     """
     _LOGGER.debug(
