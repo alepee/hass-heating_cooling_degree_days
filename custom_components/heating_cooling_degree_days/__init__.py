@@ -5,7 +5,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.event import async_track_state_change
+from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import (
     CONF_BASE_TEMPERATURE,
@@ -111,19 +111,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if weather_entity:
 
             @callback
-            def async_weather_state_changed(entity_id, old_state, new_state):
+            def async_weather_state_changed(event):
                 """Handle weather entity state changes."""
-                if new_state is None:
+                if event.data.get("new_state") is None:
                     return
                 # Trigger coordinator refresh when weather forecast updates
                 _LOGGER.debug(
                     "Weather entity %s state changed, triggering coordinator refresh",
-                    entity_id,
+                    event.data.get("entity_id"),
                 )
                 hass.async_create_task(coordinator.async_request_refresh())
 
             # Listen for changes to the weather entity
-            async_track_state_change(hass, weather_entity, async_weather_state_changed)
+            async_track_state_change_event(
+                hass, [weather_entity], async_weather_state_changed
+            )
             _LOGGER.debug(
                 "Registered state change listener for weather entity %s", weather_entity
             )
