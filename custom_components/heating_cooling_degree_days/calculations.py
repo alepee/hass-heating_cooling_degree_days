@@ -221,12 +221,14 @@ async def get_temperature_readings(
         invalid_states = 0
 
         for state in temp_history[entity_id]:
-            if (
-                state.state not in ("unknown", "unavailable")
-                and state.state.replace(".", "", 1).isdigit()
-            ):
-                readings.append((state.last_updated, float(state.state)))
-            else:
+            if state.state in ("unknown", "unavailable"):
+                invalid_states += 1
+                continue
+
+            try:
+                temp_value = float(state.state)
+                readings.append((state.last_updated, temp_value))
+            except (ValueError, TypeError):
                 invalid_states += 1
 
         if invalid_states:
