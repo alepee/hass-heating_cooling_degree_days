@@ -1,13 +1,14 @@
 """Tests for degree days calculation functions (domain logic)."""
 
-import pytest
 from datetime import datetime, timedelta
+import math
+
+import pytest
 
 from degree_days import (
-    calculate_hdd_from_readings,
     calculate_cdd_from_readings,
+    calculate_hdd_from_readings,
 )
-
 
 # =============================================================================
 # Fixtures
@@ -333,7 +334,6 @@ class TestTrapezoidalIntegration:
     def test_symmetric_temperature_curve(self, base_time):
         """Symmetric temperature curve (parabola-like)."""
         # Coldest at midnight and noon, warmest at 6am and 6pm
-        import math
         readings = [
             (base_time + timedelta(hours=h), 15.0 + 5 * math.sin(h * math.pi / 12))
             for h in range(25)

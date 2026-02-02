@@ -14,8 +14,8 @@ from homeassistant.core import HomeAssistant
 
 # Import pure domain functions (no HA dependencies)
 from .domain import (
-    calculate_hdd_from_readings,
     calculate_cdd_from_readings,
+    calculate_hdd_from_readings,
 )
 
 __all__ = [

@@ -5,8 +5,8 @@ It can be tested independently and reused outside of Home Assistant.
 """
 
 from .calculations import (
-    calculate_hdd_from_readings,
     calculate_cdd_from_readings,
+    calculate_hdd_from_readings,
 )
 
 __all__ = [

@@ -10,8 +10,8 @@ Degree Days are a measure of how cold or warm a location is over a period of tim
 The calculations use numerical integration (trapezoidal rule) for accurate results.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Sequence
 
 # Type alias for temperature readings
 TemperatureReading = tuple[datetime, float]
