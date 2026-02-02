@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Weather entity support for forecast-based degree days estimates
+- New sensors: HDD/CDD Estimated Today (combines actual + forecast data)
+- New sensors: HDD/CDD Estimated Tomorrow (forecast-based)
+- Reconfiguration flow to update integration settings
+- Repairs platform to handle weather entity regression (no longer supports hourly forecasts)
+- Automatic refresh of forecast sensors when weather entity updates
+
+### Changed
+- Unique IDs now include entry_id to prevent conflicts with multiple instances
+- Forecast sensors values are rounded to 1 decimal place
+- Automatic migration of existing entities to new unique_id format (preserves history)
+
+### Fixed
+- Fixed duplicate unique_id errors when multiple integration instances are configured
+
 ## [1.0.2] - 2025-11-05
 
 ### Added

@@ -9,15 +9,61 @@
           "base_temperature": "Température de base",
           "include_cooling": "Inclure les degrés-jours de refroidissement (DJR)",
           "include_weekly": "Inclure les capteurs hebdomadaires",
-          "include_monthly": "Inclure les capteurs mensuels"
+          "include_monthly": "Inclure les capteurs mensuels",
+          "weather_entity": "Entité météo (optionnel)"
         },
         "data_description": {
-          "base_temperature": "La température de base par défaut est de 18°C pour Celsius ou 65°F pour Fahrenheit, selon votre système d'unités"
+          "base_temperature": "La température de base par défaut est de 18°C pour Celsius ou 65°F pour Fahrenheit, selon votre système d'unités",
+          "weather_entity": "Si fournie, cette entité météo permet de fournir des données prévisionnelles à 24h et 48h"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigurer les Degrés-Jours de Chauffage et de Refroidissement",
+        "description": "Mettre à jour la configuration pour le calcul des degrés-jours de chauffage et de refroidissement",
+        "data": {
+          "temperature_sensor": "Capteur de température extérieure",
+          "base_temperature": "Température de base",
+          "include_cooling": "Inclure les degrés-jours de refroidissement (DJR)",
+          "include_weekly": "Inclure les capteurs hebdomadaires",
+          "include_monthly": "Inclure les capteurs mensuels",
+          "weather_entity": "Entité météo (optionnel)"
+        },
+        "data_description": {
+          "base_temperature": "La température de base par défaut est de 18°C pour Celsius ou 65°F pour Fahrenheit, selon votre système d'unités",
+          "weather_entity": "Si fournie, cette entité météo permet de fournir des données prévisionnelles à 24h et 48h"
+        }
+      },
+      "weather_no_hourly_forecast": {
+        "title": "Corriger le problème de l'entité météo",
+        "description": "L'entité météo {current_entity} ne supporte plus les prévisions horaires. Choisissez comment corriger cela :",
+        "data": {
+          "action": "Action"
+        },
+        "menu_options": {
+          "weather_no_hourly_forecast_select_weather": "Sélectionner une nouvelle entité météo",
+          "weather_no_hourly_forecast_confirm_remove": "Supprimer l'entité météo (désactiver les capteurs de prévision)"
+        }
+      },
+      "weather_no_hourly_forecast_select_weather": {
+        "title": "Sélectionner une nouvelle entité météo",
+        "description": "Sélectionnez une entité météo qui supporte les prévisions horaires :",
+        "data": {
+          "weather_entity": "Entité météo"
+        }
+      },
+      "weather_no_hourly_forecast_confirm_remove": {
+        "title": "Supprimer l'entité météo",
+        "description": "Cela supprimera l'entité météo {current_entity} de la configuration et désactivera les capteurs de prévision (DJC Estimé Aujourd'hui/Demain et DJR Estimé Aujourd'hui/Demain si activés)."
       }
     },
     "error": {
-      "invalid_temperature_sensor": "Capteur de température invalide. Veuillez sélectionner un capteur de température valide."
+      "invalid_temperature_sensor": "Capteur de température invalide. Veuillez sélectionner un capteur de température valide.",
+      "invalid_weather_entity": "Entité météo invalide. Veuillez sélectionner une entité météo valide avec des données de prévision.",
+      "no_entry_id": "Aucun ID d'entrée fourni",
+      "entry_not_found": "Entrée de configuration introuvable"
+    },
+    "abort": {
+      "reconfigure_successful": "Configuration mise à jour avec succès"
     }
   },
   "entity": {
@@ -39,7 +85,25 @@
       },
       "cdd_monthly": {
         "name": "DJR Mensuel"
+      },
+      "hdd_estimated_today": {
+        "name": "DJC Estimé Aujourd'hui"
+      },
+      "cdd_estimated_today": {
+        "name": "DJR Estimé Aujourd'hui"
+      },
+      "hdd_estimated_tomorrow": {
+        "name": "DJC Estimé Demain"
+      },
+      "cdd_estimated_tomorrow": {
+        "name": "DJR Estimé Demain"
       }
+    }
+  },
+  "issues": {
+    "weather_no_hourly_forecast": {
+      "title": "L'entité météo ne supporte plus les prévisions horaires",
+      "description": "L'entité météo {entity_id} configurée pour cette intégration ne supporte plus les prévisions horaires, qui sont nécessaires pour les calculs de degrés-jours estimés. Veuillez sélectionner une autre entité météo qui supporte les prévisions horaires."
     }
   }
 }

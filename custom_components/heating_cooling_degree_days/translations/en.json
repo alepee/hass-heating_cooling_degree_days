@@ -9,15 +9,61 @@
           "base_temperature": "Base Temperature",
           "include_cooling": "Include Cooling Degree Days (CDD)",
           "include_weekly": "Include Weekly Sensors",
-          "include_monthly": "Include Monthly Sensors"
+          "include_monthly": "Include Monthly Sensors",
+          "weather_entity": "Weather Entity (optional)"
         },
         "data_description": {
-          "base_temperature": "The default base temperature is 18°C for Celsius or 65°F for Fahrenheit, depending on your unit system"
+          "base_temperature": "The default base temperature is 18°C for Celsius or 65°F for Fahrenheit, depending on your unit system",
+          "weather_entity": "If provided, this weather entity enables forecast data for 24h and 48h estimates"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Heating & Cooling Degree Days",
+        "description": "Update the configuration for Heating and Cooling Degree Days calculation",
+        "data": {
+          "temperature_sensor": "Outdoor Temperature Sensor",
+          "base_temperature": "Base Temperature",
+          "include_cooling": "Include Cooling Degree Days (CDD)",
+          "include_weekly": "Include Weekly Sensors",
+          "include_monthly": "Include Monthly Sensors",
+          "weather_entity": "Weather Entity (optional)"
+        },
+        "data_description": {
+          "base_temperature": "The default base temperature is 18°C for Celsius or 65°F for Fahrenheit, depending on your unit system",
+          "weather_entity": "If provided, this weather entity enables forecast data for 24h and 48h estimates"
+        }
+      },
+      "weather_no_hourly_forecast": {
+        "title": "Fix weather entity issue",
+        "description": "The weather entity {current_entity} no longer supports hourly forecasts. Choose how to fix this:",
+        "data": {
+          "action": "Action"
+        },
+        "menu_options": {
+          "weather_no_hourly_forecast_select_weather": "Select new weather entity",
+          "weather_no_hourly_forecast_confirm_remove": "Remove weather entity (disable forecast sensors)"
+        }
+      },
+      "weather_no_hourly_forecast_select_weather": {
+        "title": "Select new weather entity",
+        "description": "Select a weather entity that supports hourly forecasts:",
+        "data": {
+          "weather_entity": "Weather Entity"
+        }
+      },
+      "weather_no_hourly_forecast_confirm_remove": {
+        "title": "Remove weather entity",
+        "description": "This will remove the weather entity {current_entity} from the configuration and disable the forecast sensors (HDD Estimated Today/Tomorrow and CDD Estimated Today/Tomorrow if enabled)."
       }
     },
     "error": {
-      "invalid_temperature_sensor": "Invalid temperature sensor. Please select a valid temperature sensor."
+      "invalid_temperature_sensor": "Invalid temperature sensor. Please select a valid temperature sensor.",
+      "invalid_weather_entity": "Invalid weather entity. Please select a valid weather entity with forecast data.",
+      "no_entry_id": "No entry ID provided",
+      "entry_not_found": "Configuration entry not found"
+    },
+    "abort": {
+      "reconfigure_successful": "Configuration updated successfully"
     }
   },
   "entity": {
@@ -39,7 +85,25 @@
       },
       "cdd_monthly": {
         "name": "CDD Monthly"
+      },
+      "hdd_estimated_today": {
+        "name": "HDD Estimated Today"
+      },
+      "cdd_estimated_today": {
+        "name": "CDD Estimated Today"
+      },
+      "hdd_estimated_tomorrow": {
+        "name": "HDD Estimated Tomorrow"
+      },
+      "cdd_estimated_tomorrow": {
+        "name": "CDD Estimated Tomorrow"
       }
+    }
+  },
+  "issues": {
+    "weather_no_hourly_forecast": {
+      "title": "Weather entity no longer supports hourly forecasts",
+      "description": "The weather entity {entity_id} configured for this integration no longer supports hourly forecasts, which are required for estimated degree days calculations. Please select a different weather entity that supports hourly forecasts."
     }
   }
 }

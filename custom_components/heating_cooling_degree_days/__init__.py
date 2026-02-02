@@ -4,7 +4,8 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import (
     CONF_BASE_TEMPERATURE,
@@ -13,20 +14,36 @@ from .const import (
     CONF_INCLUDE_WEEKLY,
     CONF_TEMPERATURE_SENSOR,
     CONF_TEMPERATURE_UNIT,
+    CONF_WEATHER_ENTITY,
     DEFAULT_INCLUDE_COOLING,
     DEFAULT_INCLUDE_MONTHLY,
     DEFAULT_INCLUDE_WEEKLY,
+    DEFAULT_NAME_WITH_HEATING,
+    DEFAULT_NAME_WITH_HEATING_AND_COOLING,
     DOMAIN,
 )
 from .coordinator import HDDDataUpdateCoordinator
+from .migrations import async_migrate_entity_unique_ids
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.SENSOR]
 
-# Simple fixed titles in English
-TITLE_STANDARD = "Heating Degree Days"
-TITLE_WITH_COOLING = "Heating & Cooling Degree Days"
+
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate a config entry."""
+
+    _LOGGER.debug(
+        "Migrating configuration from version %s.%s",
+        config_entry.version,
+        config_entry.minor_version,
+    )
+
+    if config_entry.version == 1:
+        if config_entry.minor_version < 2:
+            await async_migrate_entity_unique_ids(hass, config_entry)
+
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -42,7 +59,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     include_monthly = entry.data.get(CONF_INCLUDE_MONTHLY, DEFAULT_INCLUDE_MONTHLY)
 
     # Use simple fixed titles based on configuration
-    title = TITLE_WITH_COOLING if include_cooling else TITLE_STANDARD
+    title = (
+        DEFAULT_NAME_WITH_HEATING_AND_COOLING
+        if include_cooling
+        else DEFAULT_NAME_WITH_HEATING
+    )
 
     # Update the entry title if needed
     if entry.title != title:
@@ -71,6 +92,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             include_cooling=include_cooling,
             include_weekly=include_weekly,
             include_monthly=include_monthly,
+            weather_entity=entry.data.get(CONF_WEATHER_ENTITY),
         )
 
         # Load stored data before first refresh
@@ -83,6 +105,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         hass.data.setdefault(DOMAIN, {})
         hass.data[DOMAIN][entry.entry_id] = coordinator
+
+        # Set up listener for weather entity changes if configured
+        weather_entity = entry.data.get(CONF_WEATHER_ENTITY)
+        if weather_entity:
+
+            @callback
+            def async_weather_state_changed(event):
+                """Handle weather entity state changes."""
+                if event.data.get("new_state") is None:
+                    return
+                # Trigger coordinator refresh when weather forecast updates
+                _LOGGER.debug(
+                    "Weather entity %s state changed, triggering coordinator refresh",
+                    event.data.get("entity_id"),
+                )
+                hass.async_create_task(coordinator.async_request_refresh())
+
+            # Listen for changes to the weather entity
+            async_track_state_change_event(
+                hass, [weather_entity], async_weather_state_changed
+            )
+            _LOGGER.debug(
+                "Registered state change listener for weather entity %s", weather_entity
+            )
 
         # Set up all the platforms
         _LOGGER.debug("Setting up platforms: %s", PLATFORMS)
