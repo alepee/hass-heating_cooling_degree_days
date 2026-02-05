@@ -80,7 +80,9 @@ def calculate_hdd_from_readings(
             significant_intervals += 1
 
     if len(sorted_readings) > 1:
-        contribution_percentage = (significant_intervals / (len(sorted_readings) - 1)) * 100
+        contribution_percentage = (
+            significant_intervals / (len(sorted_readings) - 1)
+        ) * 100
         _LOGGER.debug(
             "HDD calculation: %.1f degree-days from %d/%d intervals (%.1f%% contributed)",
             total_hdd,
@@ -159,7 +161,9 @@ def calculate_cdd_from_readings(
             significant_intervals += 1
 
     if len(sorted_readings) > 1:
-        contribution_percentage = (significant_intervals / (len(sorted_readings) - 1)) * 100
+        contribution_percentage = (
+            significant_intervals / (len(sorted_readings) - 1)
+        ) * 100
         _LOGGER.debug(
             "CDD calculation: %.1f degree-days from %d/%d intervals (%.1f%% contributed)",
             total_cdd,

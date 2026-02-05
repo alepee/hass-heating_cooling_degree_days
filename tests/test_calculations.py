@@ -25,10 +25,7 @@ def make_constant_readings(
     base_time: datetime, temperature: float, hours: int = 24
 ) -> list[tuple[datetime, float]]:
     """Generate readings with constant temperature over a period."""
-    return [
-        (base_time + timedelta(hours=h), temperature)
-        for h in range(hours + 1)
-    ]
+    return [(base_time + timedelta(hours=h), temperature) for h in range(hours + 1)]
 
 
 def make_readings_from_hourly_temps(
@@ -36,8 +33,7 @@ def make_readings_from_hourly_temps(
 ) -> list[tuple[datetime, float]]:
     """Generate readings from a list of hourly temperatures."""
     return [
-        (base_time + timedelta(hours=h), temp)
-        for h, temp in enumerate(hourly_temps)
+        (base_time + timedelta(hours=h), temp) for h, temp in enumerate(hourly_temps)
     ]
 
 
@@ -126,8 +122,7 @@ class TestHDDVaryingTemperature:
         """Linear temperature decrease throughout the day."""
         # From 18°C to 8°C over 24 hours
         readings = [
-            (base_time + timedelta(hours=h), 18.0 - (h * 10 / 24))
-            for h in range(25)
+            (base_time + timedelta(hours=h), 18.0 - (h * 10 / 24)) for h in range(25)
         ]
         result = calculate_hdd_from_readings(readings, base_temp=18.0)
         # Average deficit over the day: ~5°C -> ~5 HDD
@@ -137,10 +132,31 @@ class TestHDDVaryingTemperature:
         """Simulate a typical day/night temperature cycle."""
         # Night: cold, Day: warmer
         hourly_temps = [
-            5, 4, 3, 3, 4, 5,       # 00:00-05:00 (cold night)
-            7, 9, 12, 15, 17, 19,   # 06:00-11:00 (warming up)
-            20, 21, 21, 20, 18, 16, # 12:00-17:00 (warm afternoon)
-            14, 12, 10, 8, 7, 6, 5  # 18:00-24:00 (cooling down)
+            5,
+            4,
+            3,
+            3,
+            4,
+            5,  # 00:00-05:00 (cold night)
+            7,
+            9,
+            12,
+            15,
+            17,
+            19,  # 06:00-11:00 (warming up)
+            20,
+            21,
+            21,
+            20,
+            18,
+            16,  # 12:00-17:00 (warm afternoon)
+            14,
+            12,
+            10,
+            8,
+            7,
+            6,
+            5,  # 18:00-24:00 (cooling down)
         ]
         readings = make_readings_from_hourly_temps(base_time, hourly_temps)
         result = calculate_hdd_from_readings(readings, base_temp=18.0)
@@ -210,10 +226,31 @@ class TestCDDVaryingTemperature:
         """Simulate a hot summer day with diurnal cycle."""
         # Night: warm, Day: hot
         hourly_temps = [
-            22, 21, 20, 19, 19, 20,  # 00:00-05:00 (warm night)
-            22, 25, 28, 31, 33, 35,  # 06:00-11:00 (heating up)
-            36, 37, 37, 36, 34, 32,  # 12:00-17:00 (hot afternoon)
-            30, 28, 26, 24, 23, 22, 22  # 18:00-24:00 (cooling)
+            22,
+            21,
+            20,
+            19,
+            19,
+            20,  # 00:00-05:00 (warm night)
+            22,
+            25,
+            28,
+            31,
+            33,
+            35,  # 06:00-11:00 (heating up)
+            36,
+            37,
+            37,
+            36,
+            34,
+            32,  # 12:00-17:00 (hot afternoon)
+            30,
+            28,
+            26,
+            24,
+            23,
+            22,
+            22,  # 18:00-24:00 (cooling)
         ]
         readings = make_readings_from_hourly_temps(base_time, hourly_temps)
         result = calculate_cdd_from_readings(readings, base_temp=18.0)
@@ -322,8 +359,7 @@ class TestTrapezoidalIntegration:
         """Linear temperature increase should integrate correctly."""
         # Temperature increases linearly from 10°C to 20°C over 24h
         readings = [
-            (base_time + timedelta(hours=h), 10.0 + (h * 10 / 24))
-            for h in range(25)
+            (base_time + timedelta(hours=h), 10.0 + (h * 10 / 24)) for h in range(25)
         ]
         result = calculate_hdd_from_readings(readings, base_temp=18.0)
         # Average temp = 15°C, but only part below 18°C contributes
@@ -356,10 +392,31 @@ class TestRealWorldScenarios:
     def test_winter_day_france(self, base_time):
         """Typical winter day in France (January)."""
         hourly_temps = [
-            2, 1, 0, 0, -1, 0,      # 00:00-05:00
-            1, 2, 4, 6, 8, 9,       # 06:00-11:00
-            10, 10, 9, 8, 6, 4,     # 12:00-17:00
-            3, 2, 2, 1, 1, 1, 2     # 18:00-24:00
+            2,
+            1,
+            0,
+            0,
+            -1,
+            0,  # 00:00-05:00
+            1,
+            2,
+            4,
+            6,
+            8,
+            9,  # 06:00-11:00
+            10,
+            10,
+            9,
+            8,
+            6,
+            4,  # 12:00-17:00
+            3,
+            2,
+            2,
+            1,
+            1,
+            1,
+            2,  # 18:00-24:00
         ]
         readings = make_readings_from_hourly_temps(base_time, hourly_temps)
         result = calculate_hdd_from_readings(readings, base_temp=18.0)
@@ -370,10 +427,31 @@ class TestRealWorldScenarios:
     def test_summer_day_france(self, base_time):
         """Typical summer day in France (July)."""
         hourly_temps = [
-            18, 17, 16, 16, 17, 18,  # 00:00-05:00
-            20, 23, 26, 28, 30, 32,  # 06:00-11:00
-            33, 34, 34, 33, 31, 29,  # 12:00-17:00
-            27, 25, 23, 21, 20, 19, 18  # 18:00-24:00
+            18,
+            17,
+            16,
+            16,
+            17,
+            18,  # 00:00-05:00
+            20,
+            23,
+            26,
+            28,
+            30,
+            32,  # 06:00-11:00
+            33,
+            34,
+            34,
+            33,
+            31,
+            29,  # 12:00-17:00
+            27,
+            25,
+            23,
+            21,
+            20,
+            19,
+            18,  # 18:00-24:00
         ]
         readings = make_readings_from_hourly_temps(base_time, hourly_temps)
 
@@ -387,10 +465,31 @@ class TestRealWorldScenarios:
     def test_spring_transition_day(self, base_time):
         """Spring day with temperature crossing base multiple times."""
         hourly_temps = [
-            12, 11, 10, 10, 11, 12,  # 00:00-05:00 (below base)
-            14, 16, 18, 20, 21, 22,  # 06:00-11:00 (crossing base)
-            23, 23, 22, 21, 19, 17,  # 12:00-17:00 (above then crossing)
-            15, 14, 13, 12, 12, 12, 12  # 18:00-24:00 (below base)
+            12,
+            11,
+            10,
+            10,
+            11,
+            12,  # 00:00-05:00 (below base)
+            14,
+            16,
+            18,
+            20,
+            21,
+            22,  # 06:00-11:00 (crossing base)
+            23,
+            23,
+            22,
+            21,
+            19,
+            17,  # 12:00-17:00 (above then crossing)
+            15,
+            14,
+            13,
+            12,
+            12,
+            12,
+            12,  # 18:00-24:00 (below base)
         ]
         readings = make_readings_from_hourly_temps(base_time, hourly_temps)
 
