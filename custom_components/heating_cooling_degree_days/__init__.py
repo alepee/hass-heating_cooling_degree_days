@@ -24,10 +24,6 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.SENSOR]
 
-# Simple fixed titles in English
-TITLE_STANDARD = "Heating Degree Days"
-TITLE_WITH_COOLING = "Heating & Cooling Degree Days"
-
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Heating & Cooling Degree Days from a config entry."""
@@ -40,14 +36,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     include_cooling = entry.data.get(CONF_INCLUDE_COOLING, DEFAULT_INCLUDE_COOLING)
     include_weekly = entry.data.get(CONF_INCLUDE_WEEKLY, DEFAULT_INCLUDE_WEEKLY)
     include_monthly = entry.data.get(CONF_INCLUDE_MONTHLY, DEFAULT_INCLUDE_MONTHLY)
-
-    # Use simple fixed titles based on configuration
-    title = TITLE_WITH_COOLING if include_cooling else TITLE_STANDARD
-
-    # Update the entry title if needed
-    if entry.title != title:
-        _LOGGER.debug("Updating integration title to: %s", title)
-        hass.config_entries.async_update_entry(entry, title=title)
 
     # Log the configuration
     _LOGGER.debug(

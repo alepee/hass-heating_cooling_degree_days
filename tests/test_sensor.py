@@ -80,9 +80,7 @@ async def test_device_created_per_entry(
     device_registry = dr.async_get(hass)
     device = device_registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
     assert device is not None
-    # entry.title may be overwritten by __init__.py until Task 4 is done;
-    # assert device name tracks the actual entry title at time of sensor creation.
-    assert device.name == entry.title
+    assert device.name == "Degree Days Test"
     assert device.entry_type is dr.DeviceEntryType.SERVICE
 
 
