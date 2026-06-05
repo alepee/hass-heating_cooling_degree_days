@@ -5,6 +5,7 @@
         "title": "Degrés-Jours de Chauffage et de Refroidissement",
         "description": "Configurer le calcul des degrés-jours de chauffage et de refroidissement",
         "data": {
+          "name": "Nom",
           "temperature_sensor": "Capteur de température extérieure",
           "base_temperature": "Température de base",
           "include_cooling": "Inclure les degrés-jours de refroidissement (DJR)",
@@ -12,12 +13,16 @@
           "include_monthly": "Inclure les capteurs mensuels"
         },
         "data_description": {
+          "name": "Optionnel. Utilisé comme titre de l'instance et nom de l'appareil. Si vide, un nom est dérivé de la température de base, par ex. « Heating Degree Days (18.0°C) ».",
           "base_temperature": "La température de base par défaut est de 18°C pour Celsius ou 65°F pour Fahrenheit, selon votre système d'unités"
         }
       }
     },
     "error": {
       "invalid_temperature_sensor": "Capteur de température invalide. Veuillez sélectionner un capteur de température valide."
+    },
+    "abort": {
+      "already_configured": "Une instance avec ce capteur de température et cette température de base existe déjà."
     }
   },
   "entity": {

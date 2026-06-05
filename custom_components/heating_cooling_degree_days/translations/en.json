@@ -5,6 +5,7 @@
         "title": "Heating & Cooling Degree Days",
         "description": "Set up Heating and Cooling Degree Days calculation",
         "data": {
+          "name": "Name",
           "temperature_sensor": "Outdoor Temperature Sensor",
           "base_temperature": "Base Temperature",
           "include_cooling": "Include Cooling Degree Days (CDD)",
@@ -12,12 +13,16 @@
           "include_monthly": "Include Monthly Sensors"
         },
         "data_description": {
+          "name": "Optional. Used as the entry title and device name. If left empty, a name is derived from the base temperature, e.g. \"Heating Degree Days (18.0°C)\".",
           "base_temperature": "The default base temperature is 18°C for Celsius or 65°F for Fahrenheit, depending on your unit system"
         }
       }
     },
     "error": {
       "invalid_temperature_sensor": "Invalid temperature sensor. Please select a valid temperature sensor."
+    },
+    "abort": {
+      "already_configured": "An entry with this temperature sensor and base temperature already exists."
     }
   },
   "entity": {
