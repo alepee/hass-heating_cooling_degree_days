@@ -4,7 +4,8 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_BASE_TEMPERATURE,
@@ -23,6 +24,33 @@ from .coordinator import HDDDataUpdateCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.SENSOR]
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old config entries to the current version."""
+    if entry.version > 2:
+        # Unknown future version — cannot migrate
+        return False
+
+    if entry.version == 1:
+        _LOGGER.info("Migrating config entry %s from version 1 to 2", entry.entry_id)
+
+        old_prefix = f"{DOMAIN}_"
+
+        @callback
+        def _migrate_unique_id(entity_entry: er.RegistryEntry) -> dict | None:
+            """Rewrite static v1 unique_ids to per-entry unique_ids."""
+            if entity_entry.unique_id.startswith(old_prefix):
+                sensor_type = entity_entry.unique_id.removeprefix(old_prefix)
+                return {"new_unique_id": f"{entry.entry_id}_{sensor_type}"}
+            # Already migrated or unknown format: leave untouched
+            return None
+
+        await er.async_migrate_entries(hass, entry.entry_id, _migrate_unique_id)
+        hass.config_entries.async_update_entry(entry, version=2)
+        _LOGGER.info("Migration of entry %s to version 2 complete", entry.entry_id)
+
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
