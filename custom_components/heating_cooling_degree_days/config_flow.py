@@ -6,6 +6,7 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.const import CONF_NAME
 from homeassistant.helpers import selector
 
 from .const import (
@@ -31,11 +32,7 @@ _LOGGER = logging.getLogger(__name__)
 class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Heating & Cooling Degree Days."""
 
-    VERSION = 1
-
-    def is_matching(self, other_flow: config_entries.ConfigFlow) -> bool:
-        """Return True if other_flow matches this flow."""
-        return self.context.get("unique_id") == other_flow.context.get("unique_id")
+    VERSION = 2
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
@@ -47,6 +44,14 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_temperature_sensor"
 
             if not errors:
+                # Reject a strict duplicate: same source sensor + same base temperature
+                self._async_abort_entries_match(
+                    {
+                        CONF_TEMPERATURE_SENSOR: user_input[CONF_TEMPERATURE_SENSOR],
+                        CONF_BASE_TEMPERATURE: user_input[CONF_BASE_TEMPERATURE],
+                    }
+                )
+
                 # Set the temperature unit to the user's preferred unit
                 user_input[CONF_TEMPERATURE_UNIT] = (
                     self.hass.config.units.temperature_unit
@@ -56,8 +61,13 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_INCLUDE_COOLING, DEFAULT_INCLUDE_COOLING
                 )
 
-                # Use simple fixed titles
-                title = self._get_default_name(include_cooling)
+                # The name is only used as the entry title, not stored in data
+                name = user_input.pop(CONF_NAME, "").strip()
+                title = name or self._derive_title(
+                    include_cooling,
+                    user_input[CONF_BASE_TEMPERATURE],
+                    user_input[CONF_TEMPERATURE_UNIT],
+                )
 
                 _LOGGER.debug("Creating integration with title: %s", title)
 
@@ -70,6 +80,7 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema(
                 {
+                    vol.Optional(CONF_NAME): selector.TextSelector(),
                     vol.Required(CONF_TEMPERATURE_SENSOR): selector.EntitySelector(
                         selector.EntitySelectorConfig(
                             domain=["sensor"],
@@ -94,18 +105,21 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    def _derive_title(
+        self, include_cooling: bool, base_temp: float, unit: str
+    ) -> str:
+        """Derive an entry title from the configuration, e.g. 'Heating Degree Days (18.0°C)'."""
+        base_name = (
+            DEFAULT_NAME_WITH_HEATING_AND_COOLING
+            if include_cooling
+            else DEFAULT_NAME_WITH_HEATING
+        )
+        return f"{base_name} ({base_temp:.1f}{unit})"
+
     def _get_default_base_temperature(self) -> float:
         """Get the default base temperature based on user preferred unit system."""
         return MAP_DEFAULT_BASE_TEMPERATURE.get(
             self.hass.config.units.temperature_unit, DEFAULT_BASE_TEMPERATURE_CELSIUS
-        )
-
-    def _get_default_name(self, include_cooling: bool) -> str:
-        """Get the default name based on heating and cooling degree days configuration."""
-        return (
-            DEFAULT_NAME_WITH_HEATING_AND_COOLING
-            if include_cooling
-            else DEFAULT_NAME_WITH_HEATING
         )
 
     def _validate_sensor(self, entity_id):

@@ -4,7 +4,8 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_BASE_TEMPERATURE,
@@ -24,9 +25,32 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.SENSOR]
 
-# Simple fixed titles in English
-TITLE_STANDARD = "Heating Degree Days"
-TITLE_WITH_COOLING = "Heating & Cooling Degree Days"
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old config entries to the current version."""
+    if entry.version > 2:
+        # Unknown future version — cannot migrate
+        return False
+
+    if entry.version == 1:
+        _LOGGER.info("Migrating config entry %s from version 1 to 2", entry.entry_id)
+
+        old_prefix = f"{DOMAIN}_"
+
+        @callback
+        def _migrate_unique_id(entity_entry: er.RegistryEntry) -> dict | None:
+            """Rewrite static v1 unique_ids to per-entry unique_ids."""
+            if entity_entry.unique_id.startswith(old_prefix):
+                sensor_type = entity_entry.unique_id.removeprefix(old_prefix)
+                return {"new_unique_id": f"{entry.entry_id}_{sensor_type}"}
+            # Already migrated or unknown format: leave untouched
+            return None
+
+        await er.async_migrate_entries(hass, entry.entry_id, _migrate_unique_id)
+        hass.config_entries.async_update_entry(entry, version=2)
+        _LOGGER.info("Migration of entry %s to version 2 complete", entry.entry_id)
+
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -40,14 +64,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     include_cooling = entry.data.get(CONF_INCLUDE_COOLING, DEFAULT_INCLUDE_COOLING)
     include_weekly = entry.data.get(CONF_INCLUDE_WEEKLY, DEFAULT_INCLUDE_WEEKLY)
     include_monthly = entry.data.get(CONF_INCLUDE_MONTHLY, DEFAULT_INCLUDE_MONTHLY)
-
-    # Use simple fixed titles based on configuration
-    title = TITLE_WITH_COOLING if include_cooling else TITLE_STANDARD
-
-    # Update the entry title if needed
-    if entry.title != title:
-        _LOGGER.debug("Updating integration title to: %s", title)
-        hass.config_entries.async_update_entry(entry, title=title)
 
     # Log the configuration
     _LOGGER.debug(
@@ -84,6 +100,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data.setdefault(DOMAIN, {})
         hass.data[DOMAIN][entry.entry_id] = coordinator
 
+        # Reload the entry when it is updated (e.g. renamed in the UI) so the
+        # service device name and the sensor friendly-names track the title.
+        entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
         # Set up all the platforms
         _LOGGER.debug("Setting up platforms: %s", PLATFORMS)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -99,6 +119,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             str(ex),
         )
         return False
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the config entry when it is updated (e.g. renamed in the UI)."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

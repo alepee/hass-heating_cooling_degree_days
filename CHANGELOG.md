@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Support for multiple config entries: create several instances with different base temperatures or source sensors
+- Optional name field in the config flow, used as entry title and device name
+- A device per entry grouping its sensors
+- Strict duplicate guard: an entry with the same sensor and base temperature is rejected
+
+### Changed
+- Sensor unique_ids now include the config entry id (existing installs are migrated automatically; entity_ids and history are preserved)
+- The entry title is no longer overwritten at startup; renaming an entry in the UI now sticks and propagates to the device and sensor names (the entry reloads automatically on rename)
+- Existing sensors now group under a device; their friendly names gain the device prefix (e.g. "HDD Daily" → "Heating Degree Days HDD Daily"). Entity IDs and history are unchanged
+
 ## [1.0.3] - 2026-02-02
 
 ### Fixed
