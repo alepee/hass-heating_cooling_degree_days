@@ -112,8 +112,6 @@ ignore = [
     "SIM115",  # Use context handler for opening files
     "UP006",   # keep type annotation style as is
     "UP007",   # keep type annotation style as is
-    # Ignored due to performance: https://github.com/charliermarsh/ruff/issues/2923
-    "UP038", # Use `X | Y` in `isinstance` call instead of `(X, Y)`
 
     # May conflict with the formatter, https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
     "W191",

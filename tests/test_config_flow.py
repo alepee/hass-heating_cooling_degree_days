@@ -58,7 +58,9 @@ async def _start_user_flow(hass: HomeAssistant):
     return result
 
 
-async def test_user_flow_derived_title(hass: HomeAssistant, _temperature_sensor) -> None:
+async def test_user_flow_derived_title(
+    hass: HomeAssistant, _temperature_sensor
+) -> None:
     """No name provided: title is derived from base temperature and unit."""
     with patch(
         "custom_components.heating_cooling_degree_days.async_setup_entry",
