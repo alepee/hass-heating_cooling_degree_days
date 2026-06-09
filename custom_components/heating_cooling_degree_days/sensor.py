@@ -68,11 +68,15 @@ async def async_setup_entry(
 
         # Add weekly and monthly CDD sensors if both cooling and respective period are enabled
         if coordinator.include_weekly:
-            sensors.append(DegreeDegreeSensor(coordinator, entry, SENSOR_TYPE_CDD_WEEKLY))
+            sensors.append(
+                DegreeDegreeSensor(coordinator, entry, SENSOR_TYPE_CDD_WEEKLY)
+            )
             _LOGGER.debug("Created CDD weekly sensor")
 
         if coordinator.include_monthly:
-            sensors.append(DegreeDegreeSensor(coordinator, entry, SENSOR_TYPE_CDD_MONTHLY))
+            sensors.append(
+                DegreeDegreeSensor(coordinator, entry, SENSOR_TYPE_CDD_MONTHLY)
+            )
             _LOGGER.debug("Created CDD monthly sensor")
     else:
         _LOGGER.debug("CDD sensors not enabled in configuration")

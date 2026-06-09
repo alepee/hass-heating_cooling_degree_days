@@ -1,6 +1,6 @@
 repos:
     - repo: https://github.com/astral-sh/ruff-pre-commit
-      rev: v0.7.0
+      rev: v0.15.16
       hooks:
           - id: ruff
             args:
@@ -24,4 +24,5 @@ repos:
           - id: check-yaml
             args: ['--unsafe']
           - id: check-added-large-files
+            args: ['--maxkb=2048']
           - id: check-shebang-scripts-are-executable

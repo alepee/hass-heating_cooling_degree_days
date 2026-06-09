@@ -97,8 +97,12 @@ async def test_two_entries_coexist(
     assert entry_16.state is ConfigEntryState.LOADED
 
     entity_registry = er.async_get(hass)
-    assert len(er.async_entries_for_config_entry(entity_registry, entry_18.entry_id)) == 3
-    assert len(er.async_entries_for_config_entry(entity_registry, entry_16.entry_id)) == 3
+    assert (
+        len(er.async_entries_for_config_entry(entity_registry, entry_18.entry_id)) == 3
+    )
+    assert (
+        len(er.async_entries_for_config_entry(entity_registry, entry_16.entry_id)) == 3
+    )
 
 
 async def test_unique_ids_with_cooling_enabled(

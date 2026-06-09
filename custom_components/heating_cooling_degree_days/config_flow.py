@@ -105,9 +105,7 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    def _derive_title(
-        self, include_cooling: bool, base_temp: float, unit: str
-    ) -> str:
+    def _derive_title(self, include_cooling: bool, base_temp: float, unit: str) -> str:
         """Derive an entry title from the configuration, e.g. 'Heating Degree Days (18.0°C)'."""
         base_name = (
             DEFAULT_NAME_WITH_HEATING_AND_COOLING
