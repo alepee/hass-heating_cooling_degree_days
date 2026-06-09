@@ -8,22 +8,6 @@ private/
 config/
 
 
-#Links for local development
-/translations
-/__init__.py
-/binary_sensor.py
-/climate.py
-/config_flow.py
-/const.py
-/coordinator.py
-/manifest.json
-/number.py
-/select.py
-/sensor.py
-/switch.py
-
-todo
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -99,7 +83,7 @@ target/
 .ipynb_checkpoints
 
 # pyenv
-.python-version
+# .python-version is intentionally tracked (uv stack migration)
 
 # celery beat schedule file
 celerybeat-schedule
@@ -130,3 +114,4 @@ venv.bak/
 .mypy_cache/
 
 .idea/
+.gitnexus
