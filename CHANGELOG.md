@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Sensor unique_ids now include the config entry id (existing installs are migrated automatically; entity_ids and history are preserved)
-- The entry title is no longer overwritten at startup; renaming an entry in the UI now sticks
+- The entry title is no longer overwritten at startup; renaming an entry in the UI now sticks and propagates to the device and sensor names (the entry reloads automatically on rename)
 - Existing sensors now group under a device; their friendly names gain the device prefix (e.g. "HDD Daily" → "Heating Degree Days HDD Daily"). Entity IDs and history are unchanged
 
 ## [1.0.3] - 2026-02-02

@@ -14,7 +14,7 @@ from custom_components.heating_cooling_degree_days.const import (
 )
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 TEMP_SENSOR = "sensor.outdoor_temperature"
 
@@ -107,3 +107,25 @@ async def test_title_is_not_overwritten_on_setup(
     await hass.async_block_till_done()
 
     assert entry.title == "My Custom Name"
+
+
+async def test_entry_rename_propagates_to_device_name(
+    recorder_mock, enable_custom_integrations, hass: HomeAssistant
+) -> None:
+    """Renaming the entry in the UI reloads it so the device name tracks the title."""
+    entry = MockConfigEntry(domain=DOMAIN, version=2, title="Salon", data=ENTRY_DATA)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    device_registry = dr.async_get(hass)
+    device = device_registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    assert device is not None
+    assert device.name == "Salon"
+
+    # Simulate a UI rename of the config entry (title-only update).
+    hass.config_entries.async_update_entry(entry, title="Garage")
+    await hass.async_block_till_done()
+
+    device = device_registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    assert device.name == "Garage"

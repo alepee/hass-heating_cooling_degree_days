@@ -100,6 +100,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data.setdefault(DOMAIN, {})
         hass.data[DOMAIN][entry.entry_id] = coordinator
 
+        # Reload the entry when it is updated (e.g. renamed in the UI) so the
+        # service device name and the sensor friendly-names track the title.
+        entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
         # Set up all the platforms
         _LOGGER.debug("Setting up platforms: %s", PLATFORMS)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -115,6 +119,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             str(ex),
         )
         return False
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the config entry when it is updated (e.g. renamed in the UI)."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
