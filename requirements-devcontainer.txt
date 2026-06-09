@@ -1,5 +1,5 @@
 colorlog==6.10.1
-ruff==0.15.14
+ruff==0.15.16
 bump2version
 wheel
 hassil==3.6.0
