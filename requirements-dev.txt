@@ -1,3 +1,0 @@
--r requirements-devcontainer.txt
-homeassistant
-pytest-homeassistant-custom-component
