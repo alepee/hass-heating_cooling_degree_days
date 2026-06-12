@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-09
+
 ### Added
 - Support for multiple config entries: create several instances with different base temperatures or source sensors
 - Optional name field in the config flow, used as entry title and device name
