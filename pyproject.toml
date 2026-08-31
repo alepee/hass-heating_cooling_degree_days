@@ -11,7 +11,7 @@ dev = [
     "pytest-homeassistant-custom-component",
     "pytest",
     "pytest-asyncio",
-    "ruff==0.15.16",
+    "ruff==0.16.5",
     "pre-commit>=4.6.0",
     "colorlog>=6.9.0",
 ]
