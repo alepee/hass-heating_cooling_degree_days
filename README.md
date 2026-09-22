@@ -64,11 +64,23 @@ This method provides more accurate results than simple daily averages, especiall
    - Enable/disable Cooling Degree Days calculation
    - Choose whether to include weekly and monthly sensors
 
+### Changing the settings later
+
+1. Go to Settings -> Devices & Services -> Heating & Cooling Degree Days
+2. On the entry, open the three-dot menu and choose "Reconfigure"
+3. The form is prefilled with the current settings; change what you need
+
+Entity IDs and history are preserved. Turning off the cooling, weekly or monthly
+sensors removes the matching entities. Changing the temperature source, the base
+temperature or the unit invalidates the stored daily values, so they are reset
+instead of being mixed with values calculated under the previous settings, and
+the weekly and monthly totals rebuild from the following day onwards.
+
 ## Features
 
 - Calculates daily, weekly, and monthly heating degree days (HDD)
 - Optional calculation of cooling degree days (CDD)
-- Configurable base temperature
+- Configurable base temperature, editable after setup through the reconfigure flow
 - Support for both Celsius and Fahrenheit with appropriate units (°C·d or °F·d)
 - Uses full temperature history with numerical integration for accurate calculations
 - Values displayed with 1 decimal place precision for optimal readability

@@ -16,6 +16,9 @@ from .calculations import (
     get_temperature_readings,
 )
 from .const import (
+    CONF_BASE_TEMPERATURE,
+    CONF_TEMPERATURE_SENSOR,
+    CONF_TEMPERATURE_UNIT,
     DOMAIN,
     SCAN_INTERVAL,
     SENSOR_TYPE_CDD_DAILY,
@@ -30,6 +33,16 @@ _LOGGER = logging.getLogger(__name__)
 
 STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}_data"
+
+
+async def async_remove_stored_data(hass: HomeAssistant, entry_id: str) -> None:
+    """Drop the daily values stored for an entry.
+
+    Called when the calculation settings change, so values calculated under the
+    previous settings are not mixed with the new ones.
+    """
+    await Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{entry_id}").async_remove()
+    _LOGGER.info("Removed stored daily values for entry %s", entry_id)
 
 
 class HDDDataUpdateCoordinator(DataUpdateCoordinator):
@@ -86,10 +99,45 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
             "enabled" if include_monthly else "disabled",
         )
 
+    def _config_fingerprint(self) -> dict:
+        """Return the settings the stored daily values were calculated with."""
+        return {
+            CONF_TEMPERATURE_SENSOR: self.temp_entity,
+            CONF_BASE_TEMPERATURE: self.base_temp,
+            CONF_TEMPERATURE_UNIT: self.temperature_unit,
+        }
+
+    def _is_stale(self, stored_data: dict) -> bool:
+        """Check whether stored values were calculated with other settings.
+
+        Payloads written before the fingerprint existed carry no config block;
+        they are assumed to match, as they predate any reconfiguration.
+        """
+        stored_config = stored_data.get("config")
+        if not stored_config:
+            return False
+        return stored_config != self._config_fingerprint()
+
     async def async_load_stored_data(self):
         """Load stored daily values from persistent storage."""
         try:
             stored_data = await self._store.async_load()
+            if stored_data and self._is_stale(stored_data):
+                _LOGGER.info(
+                    "Calculation settings changed since the stored values were written: "
+                    "discarding %d HDD and %d CDD stored daily values",
+                    len(
+                        stored_data.get(
+                            "daily_hdd_values", stored_data.get("daily_values", {})
+                        )
+                    ),
+                    len(stored_data.get("daily_cdd_values", {})),
+                )
+                self.daily_hdd_values = defaultdict(float)
+                self.daily_cdd_values = defaultdict(float)
+                await self.async_save_data()
+                return
+
             if stored_data:
                 # Convert date strings back to date objects
                 # Support both old "daily_values" key and new "daily_hdd_values" key for backward compatibility
@@ -136,6 +184,7 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             # Convert date objects to ISO format strings for JSON serialization
             data_to_save = {
+                "config": self._config_fingerprint(),
                 "daily_hdd_values": {
                     date_obj.isoformat(): value
                     for date_obj, value in self.daily_hdd_values.items()

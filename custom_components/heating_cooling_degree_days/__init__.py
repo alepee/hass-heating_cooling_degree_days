@@ -18,6 +18,12 @@ from .const import (
     DEFAULT_INCLUDE_MONTHLY,
     DEFAULT_INCLUDE_WEEKLY,
     DOMAIN,
+    SENSOR_TYPE_CDD_DAILY,
+    SENSOR_TYPE_CDD_MONTHLY,
+    SENSOR_TYPE_CDD_WEEKLY,
+    SENSOR_TYPE_HDD_DAILY,
+    SENSOR_TYPE_HDD_MONTHLY,
+    SENSOR_TYPE_HDD_WEEKLY,
 )
 from .coordinator import HDDDataUpdateCoordinator
 
@@ -104,6 +110,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # service device name and the sensor friendly-names track the title.
         entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
+        # A reconfiguration may have disabled sensor types: drop their entities
+        # instead of leaving them behind as unavailable
+        _async_remove_disabled_entities(
+            hass,
+            entry,
+            _enabled_sensor_types(include_cooling, include_weekly, include_monthly),
+        )
+
         # Set up all the platforms
         _LOGGER.debug("Setting up platforms: %s", PLATFORMS)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -119,6 +133,45 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             str(ex),
         )
         return False
+
+
+def _enabled_sensor_types(
+    include_cooling: bool, include_weekly: bool, include_monthly: bool
+) -> set[str]:
+    """Return the sensor types a given configuration exposes."""
+    types = {SENSOR_TYPE_HDD_DAILY}
+    if include_weekly:
+        types.add(SENSOR_TYPE_HDD_WEEKLY)
+    if include_monthly:
+        types.add(SENSOR_TYPE_HDD_MONTHLY)
+    if include_cooling:
+        types.add(SENSOR_TYPE_CDD_DAILY)
+        if include_weekly:
+            types.add(SENSOR_TYPE_CDD_WEEKLY)
+        if include_monthly:
+            types.add(SENSOR_TYPE_CDD_MONTHLY)
+    return types
+
+
+@callback
+def _async_remove_disabled_entities(
+    hass: HomeAssistant, entry: ConfigEntry, enabled_types: set[str]
+) -> None:
+    """Remove registry entries for sensor types the configuration no longer exposes."""
+    registry = er.async_get(hass)
+    prefix = f"{entry.entry_id}_"
+
+    for entity_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if not entity_entry.unique_id.startswith(prefix):
+            continue
+        sensor_type = entity_entry.unique_id.removeprefix(prefix)
+        if sensor_type not in enabled_types:
+            _LOGGER.info(
+                "Removing %s: sensor type %s is disabled in the configuration",
+                entity_entry.entity_id,
+                sensor_type,
+            )
+            registry.async_remove(entity_entry.entity_id)
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
