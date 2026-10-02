@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Reconfigure flow: the temperature source, base temperature and cooling/weekly/monthly options of an existing entry can be changed from the integration page, prefilled with the current settings (#125)
+
+### Changed
+- Minimum Home Assistant version raised to 2024.11 (required by the reconfigure flow)
+- Sensor types turned off in the configuration now have their entities removed instead of being left behind as unavailable
+- Stored daily values carry the settings they were calculated with, and are reset when the temperature source, the base temperature or the unit changes
+
 ## [1.1.0] - 2026-06-09
 
 ### Added

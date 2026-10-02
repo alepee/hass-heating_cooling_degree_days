@@ -1,5 +1,7 @@
 """Tests for integration setup and migration."""
 
+from datetime import date
+
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -129,3 +131,87 @@ async def test_entry_rename_propagates_to_device_name(
 
     device = device_registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
     assert device.name == "Garage"
+
+
+async def test_disabled_sensor_types_are_removed_from_registry(
+    recorder_mock, enable_custom_integrations, hass: HomeAssistant
+) -> None:
+    """Entities of sensor types turned off in the configuration are dropped."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=2,
+        title="Heating Degree Days",
+        data={**ENTRY_DATA, CONF_INCLUDE_MONTHLY: False},
+    )
+    entry.add_to_hass(hass)
+
+    entity_registry = er.async_get(hass)
+    stale = entity_registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        f"{entry.entry_id}_hdd_monthly",
+        suggested_object_id="hdd_monthly",
+        config_entry=entry,
+    )
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entity_registry.async_get(stale.entity_id) is None
+    remaining = {
+        e.unique_id
+        for e in er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+    }
+    assert f"{entry.entry_id}_hdd_daily" in remaining
+    assert f"{entry.entry_id}_hdd_monthly" not in remaining
+
+
+def _storage_payload(data: dict, values: dict) -> dict:
+    return {
+        "version": 1,
+        "minor_version": 1,
+        "key": f"{DOMAIN}_data",
+        "data": {
+            "config": {
+                CONF_TEMPERATURE_SENSOR: data[CONF_TEMPERATURE_SENSOR],
+                CONF_BASE_TEMPERATURE: data[CONF_BASE_TEMPERATURE],
+                CONF_TEMPERATURE_UNIT: data[CONF_TEMPERATURE_UNIT],
+            },
+            "daily_hdd_values": values,
+            "daily_cdd_values": {},
+        },
+    }
+
+
+async def test_stored_values_kept_when_settings_match(
+    recorder_mock, enable_custom_integrations, hass: HomeAssistant, hass_storage
+) -> None:
+    """Stored daily values written with the current settings are loaded."""
+    entry = MockConfigEntry(domain=DOMAIN, version=2, title="HDD", data=ENTRY_DATA)
+    entry.add_to_hass(hass)
+    hass_storage[f"{DOMAIN}_data_{entry.entry_id}"] = _storage_payload(
+        ENTRY_DATA, {"2026-09-20": 4.2}
+    )
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    assert coordinator.daily_hdd_values[date(2026, 9, 20)] == 4.2
+
+
+async def test_stored_values_discarded_when_base_temperature_changed(
+    recorder_mock, enable_custom_integrations, hass: HomeAssistant, hass_storage
+) -> None:
+    """Values calculated with another base temperature are not mixed in."""
+    entry = MockConfigEntry(domain=DOMAIN, version=2, title="HDD", data=ENTRY_DATA)
+    entry.add_to_hass(hass)
+    hass_storage[f"{DOMAIN}_data_{entry.entry_id}"] = _storage_payload(
+        {**ENTRY_DATA, CONF_BASE_TEMPERATURE: 15.0}, {"2026-09-20": 4.2}
+    )
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    assert date(2026, 9, 20) not in coordinator.daily_hdd_values
