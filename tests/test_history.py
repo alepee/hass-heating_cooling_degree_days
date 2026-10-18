@@ -18,11 +18,6 @@ END = START + timedelta(days=1)
 ENTITY = "sensor.outdoor"
 
 
-@pytest.fixture(autouse=True)
-def _auto_enable_custom_integrations():
-    """Let recorder_mock establish fixture ordering before hass."""
-
-
 @pytest.mark.freeze_time("2026-01-01 22:00:00+00:00")
 async def test_recorder_start_state_and_end_exclusion(recorder_mock, hass, freezer):
     """An actual recorder start-state covers the whole day, excluding end changes."""

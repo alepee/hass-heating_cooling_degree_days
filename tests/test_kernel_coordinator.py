@@ -19,11 +19,6 @@ from homeassistant.util import dt as dt_util
 START = datetime(2026, 1, 2, tzinfo=UTC)
 
 
-@pytest.fixture(autouse=True)
-def _auto_enable_custom_integrations():
-    """Let recorder_mock initialize before hass."""
-
-
 def _coordinator(hass):
     """Create a coordinator with both daily calculations enabled."""
     dt_util.set_default_time_zone(UTC)
@@ -40,7 +35,9 @@ def _coordinator(hass):
 
 
 @pytest.mark.freeze_time("2026-01-03 12:00:00+00:00")
-async def test_partial_result_precision_and_sensor_mean(recorder_mock, hass):
+async def test_partial_result_precision_and_sensor_mean(
+    recorder_mock, enable_custom_integrations, hass
+):
     """Store unrounded integrals and display coverage with a time-weighted mean."""
     history = TemperatureHistory(
         samples=(
@@ -71,7 +68,9 @@ async def test_partial_result_precision_and_sensor_mean(recorder_mock, hass):
 
 
 @pytest.mark.freeze_time("2026-01-03 12:00:00+00:00")
-async def test_missing_day_does_not_publish_or_persist_zero(recorder_mock, hass):
+async def test_missing_day_does_not_publish_or_persist_zero(
+    recorder_mock, enable_custom_integrations, hass
+):
     """A query without samples yields an unknown daily value with zero coverage."""
     coordinator = _coordinator(hass)
     with patch(
@@ -90,7 +89,9 @@ async def test_missing_day_does_not_publish_or_persist_zero(recorder_mock, hass)
     assert sensor.extra_state_attributes["coverage"] == 0
 
 
-async def test_recorder_failure_marks_coordinator_failed(recorder_mock, hass):
+async def test_recorder_failure_marks_coordinator_failed(
+    recorder_mock, enable_custom_integrations, hass
+):
     """A fetch failure cannot masquerade as a successful cached update."""
     coordinator = _coordinator(hass)
     coordinator.async_set_updated_data({"hdd_daily": 8})
