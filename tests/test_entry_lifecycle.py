@@ -207,6 +207,9 @@ async def test_unload_failure_preserves_loaded_runtime(
     assert entry.runtime_data is coordinator
     assert len(entry.update_listeners) == 1
 
+    # The entry stays loaded on purpose; release its timers before teardown.
+    await entry._async_process_on_unload(hass)
+
 
 async def test_unload_preserves_storage_remove_deletes_only_own_storage(
     recorder_mock, enable_custom_integrations, hass: HomeAssistant, hass_storage
