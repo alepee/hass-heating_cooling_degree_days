@@ -5,11 +5,30 @@ updates:
       directory: '/'
       schedule:
           interval: 'weekly'
+          day: 'monday'
+          time: '09:00'
+          timezone: 'Europe/Paris'
+      open-pull-requests-limit: 3
+      groups:
+          github-actions:
+              applies-to: 'version-updates'
+              patterns: ['*']
 
-    - package-ecosystem: 'pip'
+    - package-ecosystem: 'uv'
       directory: '/'
       schedule:
           interval: 'weekly'
+          day: 'monday'
+          time: '09:00'
+          timezone: 'Europe/Paris'
+      open-pull-requests-limit: 3
+      groups:
+          dev-tooling:
+              applies-to: 'version-updates'
+              patterns: ['pytest', 'pytest-asyncio', 'pre-commit', 'colorlog']
+              exclude-patterns: ['ruff']
+              update-types: ['minor', 'patch']
       ignore:
-          # Dependabot should not update Home Assistant as that should match the homeassistant key in hacs.json
+          # The supported Home Assistant floor (hacs.json) is managed manually.
+          # pytest-homeassistant-custom-component is left to Dependabot so CI tracks recent HA.
           - dependency-name: 'homeassistant'
