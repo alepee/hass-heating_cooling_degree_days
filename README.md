@@ -24,14 +24,27 @@ For example, if you set a base temperature of 21°C (69.8°F):
 
 This integration uses a numerical integration method for calculating degree days:
 
-1. Detailed temperature readings are collected throughout the day
-2. For each time interval, the duration and temperature difference from the base temperature are calculated
-3. The temperature difference is weighted by the duration
-4. All intervals are summed to get the total degree days
+1. Recorder states are read for the previous local calendar day, including the state at its start.
+2. Each state's temperature is converted from its recorded unit to the configured calculation unit. If its unit is missing, the current source unit (or the calculation unit) is assumed and recorded internally.
+3. A temperature holds until the next state or the end of the day. Unknown, unavailable, non-numeric, non-finite, or unsupported-unit states start gaps; gaps are never interpolated through.
+4. Heating deficits and cooling excesses are multiplied by their elapsed seconds, summed, and divided by 86,400. No short intervals are dropped.
 
 This method provides more accurate results than simple daily averages, especially when temperature fluctuates significantly throughout the day.
 
-**Note**: All degree days values are rounded to 1 decimal place (e.g., `12.3°C·d`) for optimal readability and practical use.
+The divisor remains 86,400 on daylight-saving transitions: a constant 8-degree
+heating deficit produces 8 × 23/24 degree days on a 23-hour day and 8 × 25/24
+on a 25-hour day. The mean temperature is weighted by the duration of valid
+states, excluding gaps.
+
+Daily sensors expose `coverage` (a fraction from 0 to 1) and `partial`. Partial
+values include only covered time, with no extrapolation to a complete day. A day
+with no covered time is unknown, not zero. Recorder query failures mark sensors
+unavailable instead of publishing a successful cached value. Period-wide gap
+tracking and backfill are separate from this daily calculation.
+
+**Note**: Values are kept unrounded for calculations and storage, and displayed
+with 1 decimal place (e.g., `12.3°C·d`). Previously stored daily totals are not
+retroactively recomputed by this change.
 
 ## Installation
 
