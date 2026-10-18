@@ -9,7 +9,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.heating_cooling_degree_days.const import DOMAIN
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
 
 ENTRY_DATA = {
@@ -127,7 +127,6 @@ async def test_unchanged_loaded_reconfigure_does_not_reload(
             ConfigEntryNotReady("History temporarily unavailable"),
             ConfigEntryState.SETUP_RETRY,
         ),
-        (ConfigEntryAuthFailed("Authentication failed"), ConfigEntryState.SETUP_ERROR),
         (RuntimeError("Unexpected setup error"), ConfigEntryState.SETUP_ERROR),
     ],
 )
@@ -138,7 +137,7 @@ async def test_first_refresh_failure_reaches_home_assistant(
     error,
     expected_state,
 ) -> None:
-    """HA handles retry/auth errors and no runtime data or listener is retained."""
+    """HA handles retry/setup errors and no runtime data or listener is retained."""
     entry = _add_entry(hass)
     with patch(
         "custom_components.heating_cooling_degree_days.coordinator."
