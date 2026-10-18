@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Heating & Cooling Degree Days",
-        "description": "Set up Heating and Cooling Degree Days calculation",
+        "description": "Set up Heating and Cooling Degree Days calculation. Enter the base temperature in {temperature_unit}.",
         "data": {
           "name": "Name",
           "temperature_sensor": "Outdoor Temperature Sensor",
@@ -19,7 +19,7 @@
       },
       "reconfigure": {
         "title": "Heating & Cooling Degree Days",
-        "description": "Change the degree days calculation settings",
+        "description": "Change the degree days calculation settings. Enter the base temperature in {temperature_unit}, the unit saved for this entry.",
         "data": {
           "name": "Name",
           "temperature_sensor": "Outdoor Temperature Sensor",
@@ -30,12 +30,13 @@
         },
         "data_description": {
           "name": "Used as the entry title and device name. If left empty, a name is derived from the base temperature, e.g. “Heating Degree Days (18.0°C)”.",
-          "base_temperature": "The default base temperature is 18°C for Celsius or 65°F for Fahrenheit, depending on your unit system"
+          "base_temperature": "The unit saved for this entry is preserved when Home Assistant’s unit system changes."
         }
       }
     },
     "error": {
-      "invalid_temperature_sensor": "Invalid temperature sensor. Please select a valid temperature sensor."
+      "invalid_temperature_sensor": "Select an existing sensor with a temperature device class or a temperature unit (°C, °F or K).",
+      "invalid_base_temperature": "Enter a finite number for the base temperature."
     },
     "abort": {
       "already_configured": "An entry with this temperature sensor and base temperature already exists.",

@@ -18,18 +18,16 @@ from .const import (
     DEFAULT_INCLUDE_MONTHLY,
     DEFAULT_INCLUDE_WEEKLY,
     DOMAIN,
-    SENSOR_TYPE_CDD_DAILY,
-    SENSOR_TYPE_CDD_MONTHLY,
-    SENSOR_TYPE_CDD_WEEKLY,
-    SENSOR_TYPE_HDD_DAILY,
-    SENSOR_TYPE_HDD_MONTHLY,
-    SENSOR_TYPE_HDD_WEEKLY,
+    HISTORICAL_SENSOR_TYPES,
+    get_enabled_sensor_types,
 )
-from .coordinator import HDDDataUpdateCoordinator
+from .coordinator import HDDDataUpdateCoordinator, async_remove_stored_data
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.SENSOR]
+
+type HDDConfigEntry = ConfigEntry[HDDDataUpdateCoordinator]
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -59,7 +57,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: HDDConfigEntry) -> bool:
     """Set up Heating & Cooling Degree Days from a config entry."""
     _LOGGER.info(
         "Setting up Heating & Cooling Degree Days integration with ID: %s",
@@ -83,89 +81,65 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "Yes" if include_monthly else "No",
     )
 
+    coordinator = HDDDataUpdateCoordinator(
+        hass=hass,
+        temp_entity=entry.data[CONF_TEMPERATURE_SENSOR],
+        base_temp=entry.data[CONF_BASE_TEMPERATURE],
+        temperature_unit=entry.data[CONF_TEMPERATURE_UNIT],
+        entry_id=entry.entry_id,
+        include_cooling=include_cooling,
+        include_weekly=include_weekly,
+        include_monthly=include_monthly,
+    )
+
+    await coordinator.async_load_stored_data()
+    # Let HA handle ConfigEntryNotReady and authentication/setup failures.
+    await coordinator.async_config_entry_first_refresh()
+
+    entry.runtime_data = coordinator
+    setup_complete = False
     try:
-        coordinator = HDDDataUpdateCoordinator(
-            hass=hass,
-            temp_entity=entry.data[CONF_TEMPERATURE_SENSOR],
-            base_temp=entry.data[CONF_BASE_TEMPERATURE],
-            temperature_unit=entry.data[CONF_TEMPERATURE_UNIT],
-            entry_id=entry.entry_id,
-            include_cooling=include_cooling,
-            include_weekly=include_weekly,
-            include_monthly=include_monthly,
-        )
-
-        # Load stored data before first refresh
-        _LOGGER.debug("Loading stored data for coordinator")
-        await coordinator.async_load_stored_data()
-
-        # Do the initial data refresh
-        _LOGGER.debug("Performing initial data refresh for coordinator")
-        await coordinator.async_config_entry_first_refresh()
-
-        hass.data.setdefault(DOMAIN, {})
-        hass.data[DOMAIN][entry.entry_id] = coordinator
-
-        # Reload the entry when it is updated (e.g. renamed in the UI) so the
-        # service device name and the sensor friendly-names track the title.
-        entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
         # A reconfiguration may have disabled sensor types: drop their entities
         # instead of leaving them behind as unavailable
         _async_remove_disabled_entities(
             hass,
             entry,
-            _enabled_sensor_types(include_cooling, include_weekly, include_monthly),
+            get_enabled_sensor_types(include_cooling, include_weekly, include_monthly),
         )
 
-        # Set up all the platforms
-        _LOGGER.debug("Setting up platforms: %s", PLATFORMS)
-        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        # This listener owns reloads, including title changes and reconfiguration.
+        entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+        setup_complete = True
+    finally:
+        if not setup_complete:
+            # Forwarding may have added entities before raising or being cancelled.
+            try:
+                await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+            finally:
+                del entry.runtime_data
 
-        _LOGGER.info(
-            "Heating & Cooling Degree Days integration setup completed successfully"
-        )
-        return True
-
-    except Exception as ex:
-        _LOGGER.exception(
-            "Error setting up Heating & Cooling Degree Days integration: %s",
-            str(ex),
-        )
-        return False
-
-
-def _enabled_sensor_types(
-    include_cooling: bool, include_weekly: bool, include_monthly: bool
-) -> set[str]:
-    """Return the sensor types a given configuration exposes."""
-    types = {SENSOR_TYPE_HDD_DAILY}
-    if include_weekly:
-        types.add(SENSOR_TYPE_HDD_WEEKLY)
-    if include_monthly:
-        types.add(SENSOR_TYPE_HDD_MONTHLY)
-    if include_cooling:
-        types.add(SENSOR_TYPE_CDD_DAILY)
-        if include_weekly:
-            types.add(SENSOR_TYPE_CDD_WEEKLY)
-        if include_monthly:
-            types.add(SENSOR_TYPE_CDD_MONTHLY)
-    return types
+    return True
 
 
 @callback
 def _async_remove_disabled_entities(
-    hass: HomeAssistant, entry: ConfigEntry, enabled_types: set[str]
+    hass: HomeAssistant, entry: HDDConfigEntry, enabled_types: tuple[str, ...]
 ) -> None:
     """Remove registry entries for sensor types the configuration no longer exposes."""
     registry = er.async_get(hass)
     prefix = f"{entry.entry_id}_"
 
     for entity_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
-        if not entity_entry.unique_id.startswith(prefix):
+        if (
+            entity_entry.domain != Platform.SENSOR
+            or entity_entry.platform != DOMAIN
+            or not entity_entry.unique_id.startswith(prefix)
+        ):
             continue
         sensor_type = entity_entry.unique_id.removeprefix(prefix)
-        if sensor_type not in enabled_types:
+        if sensor_type in HISTORICAL_SENSOR_TYPES and sensor_type not in enabled_types:
             _LOGGER.info(
                 "Removing %s: sensor type %s is disabled in the configuration",
                 entity_entry.entity_id,
@@ -174,12 +148,12 @@ def _async_remove_disabled_entities(
             registry.async_remove(entity_entry.entity_id)
 
 
-async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def _async_update_listener(hass: HomeAssistant, entry: HDDConfigEntry) -> None:
     """Reload the config entry when it is updated (e.g. renamed in the UI)."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: HDDConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.info(
         "Unloading Heating & Cooling Degree Days integration with ID: %s",
@@ -189,9 +163,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         _LOGGER.debug("Successfully unloaded platforms")
-        hass.data[DOMAIN].pop(entry.entry_id)
         _LOGGER.info("Integration unloaded successfully")
     else:
         _LOGGER.warning("Failed to unload one or more platforms")
 
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: HDDConfigEntry) -> None:
+    """Remove only this entry's persistent history when the entry is deleted."""
+    await async_remove_stored_data(hass, entry.entry_id)
