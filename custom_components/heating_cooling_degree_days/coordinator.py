@@ -10,11 +10,6 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from .calculations import (
-    calculate_cdd_from_readings,
-    calculate_hdd_from_readings,
-    get_temperature_readings,
-)
 from .const import (
     CONF_BASE_TEMPERATURE,
     CONF_TEMPERATURE_SENSOR,
@@ -28,6 +23,8 @@ from .const import (
     SENSOR_TYPE_HDD_MONTHLY,
     SENSOR_TYPE_HDD_WEEKLY,
 )
+from .degree_days import DayResult, integrate_degree_days
+from .history import TemperatureHistory, get_temperature_history
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,7 +42,7 @@ async def async_remove_stored_data(hass: HomeAssistant, entry_id: str) -> None:
     _LOGGER.info("Removed stored daily values for entry %s", entry_id)
 
 
-class HDDDataUpdateCoordinator(DataUpdateCoordinator):
+class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
     """Class to manage fetching HDD and CDD data."""
 
     def __init__(
@@ -74,7 +71,8 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
         self.include_cooling = include_cooling
         self.include_weekly = include_weekly
         self.include_monthly = include_monthly
-        self.temperature_history = []
+        self.day_result: DayResult | None = None
+        self.temperature_history: TemperatureHistory | None = None
         self.daily_hdd_values = defaultdict(
             float
         )  # Storage for daily HDD values by date
@@ -204,7 +202,7 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as ex:
             _LOGGER.error("Error saving data to storage: %s", str(ex))
 
-    async def _async_update_data(self):
+    async def _async_update_data(self) -> dict[str, float | None]:
         """Update data via library."""
         now = dt_util.now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -218,74 +216,44 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
         # Get temperature readings for yesterday (full day)
-        daily_readings = await get_temperature_readings(
+        history = await get_temperature_history(
             self.hass,
             yesterday_start,
             today_start,
             self.temp_entity,
+            self.temperature_unit,
         )
+        day_result = integrate_degree_days(
+            history.samples, yesterday_start, today_start, self.base_temp
+        )
+        self.temperature_history = history
+        self.day_result = day_result
+        # Missing coverage is not a measured zero. Period coverage/backfill is
+        # handled separately from the daily kernel.
+        daily_hdd = day_result.hdd if day_result.coverage_seconds else None
+        daily_cdd = day_result.cdd if day_result.coverage_seconds else None
 
-        if not daily_readings:
-            _LOGGER.warning(
-                "No temperature readings found for %s between %s and %s",
-                self.temp_entity,
-                yesterday_start.isoformat(),
-                today_start.isoformat(),
-            )
-            # Prepare empty result based on enabled types
-            result = {
-                SENSOR_TYPE_HDD_DAILY: 0,
-            }
-
-            if self.include_weekly:
-                result[SENSOR_TYPE_HDD_WEEKLY] = 0
-
-            if self.include_monthly:
-                result[SENSOR_TYPE_HDD_MONTHLY] = 0
-
-            if self.include_cooling:
-                result[SENSOR_TYPE_CDD_DAILY] = 0
-
-                if self.include_weekly:
-                    result[SENSOR_TYPE_CDD_WEEKLY] = 0
-
-                if self.include_monthly:
-                    result[SENSOR_TYPE_CDD_MONTHLY] = 0
-
-            return self.data if self.data else result
-
-        _LOGGER.debug("Retrieved %d temperature readings", len(daily_readings))
-
-        # Store the most recent readings for attributes
-        self.temperature_history = daily_readings
-
-        # Calculate daily HDD using integration method
-        # (Integration method as requested by the user)
-        daily_hdd = calculate_hdd_from_readings(daily_readings, self.base_temp)
-        daily_cdd = 0
-
-        # Store in daily values history - use yesterday as it's a complete day
+        # Store the observed portion of yesterday, keeping full precision.
         data_changed = False
-        if daily_readings:
+        if day_result.coverage_seconds:
             self.daily_hdd_values[yesterday_date] = daily_hdd
             data_changed = True
             _LOGGER.debug(
                 "Calculated daily HDD for %s: %.2f (from %d readings)",
                 yesterday_date,
                 daily_hdd,
-                len(daily_readings),
+                len(history.samples),
             )
 
             # Calculate and store CDD if enabled
             if self.include_cooling:
-                daily_cdd = calculate_cdd_from_readings(daily_readings, self.base_temp)
                 self.daily_cdd_values[yesterday_date] = daily_cdd
                 data_changed = True
                 _LOGGER.debug(
                     "Calculated daily CDD for %s: %.2f (from %d readings)",
                     yesterday_date,
                     daily_cdd,
-                    len(daily_readings),
+                    len(history.samples),
                 )
 
         # Clean up old data (keep 60 days maximum)

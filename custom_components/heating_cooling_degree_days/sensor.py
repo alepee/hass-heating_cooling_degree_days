@@ -135,8 +135,9 @@ class DegreeDegreeSensor(CoordinatorEntity, SensorEntity):
             return None
 
         value = self.coordinator.data[self.sensor_type]
-        # Values are already rounded to 1 decimal place in calculations.py
-        # No need for additional rounding here
+        # Keep integration and stored totals unrounded; round only for display.
+        if value is None:
+            return None
 
         _LOGGER.debug(
             "Returning value for %s: %.1f %s",
@@ -144,7 +145,7 @@ class DegreeDegreeSensor(CoordinatorEntity, SensorEntity):
             value,
             self._attr_native_unit_of_measurement,
         )
-        return value
+        return round(value, 1)
 
     @property
     def extra_state_attributes(self):
@@ -158,6 +159,13 @@ class DegreeDegreeSensor(CoordinatorEntity, SensorEntity):
         mean_temp = self._get_mean_temperature()
         if mean_temp is not None:
             attrs[ATTR_MEAN_TEMPERATURE] = mean_temp
+
+        if (
+            self.sensor_type in (SENSOR_TYPE_HDD_DAILY, SENSOR_TYPE_CDD_DAILY)
+            and (result := self.coordinator.day_result) is not None
+        ):
+            attrs["coverage"] = result.coverage_seconds / result.window_seconds
+            attrs["partial"] = result.coverage_seconds < result.window_seconds
 
         return attrs
 
@@ -191,21 +199,10 @@ class DegreeDegreeSensor(CoordinatorEntity, SensorEntity):
         """Get the mean temperature for the period."""
         if (
             self.sensor_type in [SENSOR_TYPE_HDD_DAILY, SENSOR_TYPE_CDD_DAILY]
-            and self.coordinator.temperature_history
+            and (result := self.coordinator.day_result) is not None
+            and result.mean_temp is not None
         ):
-            temps = [temp for _, temp in self.coordinator.temperature_history]
-            if not temps:
-                _LOGGER.debug("No temperature data available for mean calculation")
-                return None
-
-            mean_temp = sum(temps) / len(temps)
-            _LOGGER.debug(
-                "Calculated mean temperature: %.1f°%s from %d readings",
-                mean_temp,
-                self.coordinator.temperature_unit,
-                len(temps),
-            )
-            return round(mean_temp, 1)
+            return round(result.mean_temp, 1)
 
         # For weekly and monthly, we don't have an average temperature
         # because these values are accumulations
