@@ -1,6 +1,5 @@
 """Tests for the sensor platform with multiple config entries."""
 
-import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.heating_cooling_degree_days.const import (
@@ -17,17 +16,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 TEMP_SENSOR = "sensor.outdoor_temperature"
-
-
-@pytest.fixture(autouse=True)
-def _auto_enable_custom_integrations():
-    """Override the conftest autouse fixture for this module.
-
-    The conftest version depends on ``enable_custom_integrations`` → ``hass``,
-    which would initialize ``hass`` before ``recorder_db_url`` and break
-    ``recorder_mock`` ordering. Tests here request ``recorder_mock`` and
-    ``enable_custom_integrations`` explicitly, in that order, instead.
-    """
 
 
 def _make_entry(
@@ -78,8 +66,8 @@ async def test_device_created_per_entry(
     await _setup_entry(hass, entry)
 
     device_registry = dr.async_get(hass)
-    device = device_registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
-    assert device is not None
+    (device,) = dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+    assert device.identifiers == {(DOMAIN, entry.entry_id)}
     assert device.name == "Degree Days Test"
     assert device.entry_type is dr.DeviceEntryType.SERVICE
 

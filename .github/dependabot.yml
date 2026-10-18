@@ -25,10 +25,14 @@ updates:
       groups:
           dev-tooling:
               applies-to: 'version-updates'
-              patterns: ['pytest', 'pytest-asyncio', 'pre-commit', 'colorlog']
+              patterns: ['pre-commit', 'colorlog']
               exclude-patterns: ['ruff']
               update-types: ['minor', 'patch']
       ignore:
-          # The supported Home Assistant floor (hacs.json) is managed manually.
-          # pytest-homeassistant-custom-component is left to Dependabot so CI tracks recent HA.
+          # phac pins HA, pytest and pytest-asyncio. A single newest phac pin
+          # cannot cover all supported Python versions in the universal lock.
+          # Update this family together manually; the latest CI row is a canary.
           - dependency-name: 'homeassistant'
+          - dependency-name: 'pytest-homeassistant-custom-component'
+          - dependency-name: 'pytest'
+          - dependency-name: 'pytest-asyncio'

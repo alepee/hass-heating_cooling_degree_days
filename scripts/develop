@@ -4,10 +4,16 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+# Bootstrap once; preserve deliberate HA overrides in an existing environment.
+# Run `make install` to restore the locked dependencies.
+if [[ ! -x .venv/bin/hass ]]; then
+    uv sync --locked --group dev
+fi
+
 # Create config dir if not present
 if [[ ! -d "${PWD}/config" ]]; then
     mkdir -p "${PWD}/config"
-    uv run hass --config "${PWD}/config" --script ensure_config
+    uv run --no-sync hass --config "${PWD}/config" --script ensure_config
 fi
 if ! grep -R "^logger:" config/configuration.yaml >> /dev/null;then
 echo -n "
@@ -28,4 +34,4 @@ fi
 export PYTHONPATH="${PYTHONPATH}:${PWD}/custom_components"
 
 # Start Home Assistant
-uv run hass --config "${PWD}/config" --debug
+uv run --no-sync hass --config "${PWD}/config" --debug
