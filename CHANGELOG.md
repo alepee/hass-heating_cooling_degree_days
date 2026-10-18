@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Integration icon and logo, shipped with the integration (`brand/`) and shown by Home Assistant 2026.3 or later
+
 ## [1.2.0-beta.1] - 2026-10-19
 
 ### Fixed
