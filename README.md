@@ -122,12 +122,25 @@ Degree days can be used to:
 
 ## Requirements
 
-- Home Assistant Core: 2024.1.0 or later
+- Home Assistant Core: 2025.1 or later
 - HACS: 1.32.0 or later (if using HACS installation)
 
 ## Contributing
 
 Feel free to submit issues and pull requests for improvements.
+
+Development uses local [uv](https://docs.astral.sh/uv/getting-started/installation/)
+and Python 3.13 (see `.python-version`). From the repository root:
+
+```bash
+uv python install
+make setup
+make check && make test
+make ha-run
+```
+
+Home Assistant uses `http://localhost:8123` by default. Its local configuration
+is in `config/`. In VS Code, select `.venv/bin/python` as the interpreter.
 
 ## Changelog
 
