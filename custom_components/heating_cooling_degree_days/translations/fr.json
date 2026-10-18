@@ -13,7 +13,7 @@
           "include_monthly": "Inclure les capteurs mensuels"
         },
         "data_description": {
-          "name": "Optionnel. Utilisé comme titre de l'instance et nom de l'appareil. Si vide, un nom est dérivé de la température de base, par ex. « Heating Degree Days (18.0°C) ».",
+          "name": "Optionnel. Utilisé comme titre de l'instance et nom de l'appareil. Si vide, un nom est dérivé de la température de base, par ex. « Degrés-jours de chauffage (18.0°C) ».",
           "base_temperature": "La température de base par défaut est de 18°C pour Celsius ou 65°F pour Fahrenheit, selon votre système d'unités"
         }
       },
@@ -29,7 +29,7 @@
           "include_monthly": "Inclure les capteurs mensuels"
         },
         "data_description": {
-          "name": "Utilisé comme titre de l'instance et nom de l'appareil. Si vide, un nom est dérivé de la température de base, par ex. « Heating Degree Days (18.0°C) ».",
+          "name": "Utilisé comme titre de l'instance et nom de l'appareil. Si vide, un nom est dérivé de la température de base, par ex. « Degrés-jours de chauffage (18.0°C) ».",
           "base_temperature": "L’unité enregistrée pour cette instance est conservée lorsque le système d’unités de Home Assistant change."
         }
       }
@@ -64,5 +64,9 @@
         "name": "DJR Mensuel"
       }
     }
+  },
+  "common": {
+    "default_title_heating": "Degrés-jours de chauffage",
+    "default_title_heating_and_cooling": "Degrés-jours de chauffage et de refroidissement"
   }
 }

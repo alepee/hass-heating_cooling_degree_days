@@ -11,6 +11,7 @@ from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState, ConfigFlowResult
 from homeassistant.const import CONF_NAME, UnitOfTemperature
 from homeassistant.helpers import selector
+from homeassistant.helpers.translation import async_get_translations
 
 from .const import (
     CONF_BASE_TEMPERATURE,
@@ -58,7 +59,7 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 # The name is only used as the entry title, not stored in data
                 name = user_input.get(CONF_NAME, "").strip()
-                title = name or self._derive_title(data)
+                title = name or await self._async_derive_title(data)
 
                 _LOGGER.debug("Creating integration with title: %s", title)
 
@@ -90,9 +91,11 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not errors:
                 # An empty name falls back to a title derived from the new settings
                 name = user_input.get(CONF_NAME, "").strip()
-                if name == entry.title and name == self._derive_title(entry.data):
+                if name == entry.title and await self._async_is_generated_title(
+                    name, entry.data
+                ):
                     name = ""
-                title = name or self._derive_title(data)
+                title = name or await self._async_derive_title(data)
 
                 _LOGGER.debug(
                     "Reconfiguring entry %s with title: %s", entry.entry_id, title
@@ -201,17 +204,42 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
         )
 
-    def _derive_title(self, data: dict[str, Any]) -> str:
-        """Derive an entry title from the configuration, e.g. 'Heating Degree Days (18.0°C)'."""
+    async def _async_derive_title(
+        self, data: dict[str, Any], language: str | None = None
+    ) -> str:
+        """Derive a localized title without rounding distinct base temperatures."""
+        cooling = data.get(CONF_INCLUDE_COOLING, DEFAULT_INCLUDE_COOLING)
+        translations = await async_get_translations(
+            self.hass, language or self.hass.config.language, "common", {DOMAIN}
+        )
+        key = "heating_and_cooling" if cooling else "heating"
         base_name = (
             DEFAULT_NAME_WITH_HEATING_AND_COOLING
-            if data.get(CONF_INCLUDE_COOLING, DEFAULT_INCLUDE_COOLING)
+            if cooling
             else DEFAULT_NAME_WITH_HEATING
+        )
+        base_name = translations.get(
+            f"component.{DOMAIN}.common.default_title_{key}", base_name
         )
         return (
             f"{base_name} "
-            f"({data[CONF_BASE_TEMPERATURE]:.1f}{data[CONF_TEMPERATURE_UNIT]})"
+            f"({float(data[CONF_BASE_TEMPERATURE])}{data[CONF_TEMPERATURE_UNIT]})"
         )
+
+    async def _async_is_generated_title(self, title: str, data: dict[str, Any]) -> bool:
+        """Recognize supported languages and legacy one-decimal generated titles."""
+        rounded_data = {
+            **data,
+            CONF_BASE_TEMPERATURE: float(f"{data[CONF_BASE_TEMPERATURE]:.1f}"),
+        }
+        # An entry may have been created before the system language changed.
+        for language in {"en", "fr", self.hass.config.language}:
+            if title in {
+                await self._async_derive_title(data, language),
+                await self._async_derive_title(rounded_data, language),
+            }:
+                return True
+        return False
 
     def _get_default_base_temperature(self) -> float:
         """Get the default base temperature based on user preferred unit system."""

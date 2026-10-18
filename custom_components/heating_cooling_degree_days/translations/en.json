@@ -64,5 +64,9 @@
         "name": "CDD Monthly"
       }
     }
+  },
+  "common": {
+    "default_title_heating": "Heating Degree Days",
+    "default_title_heating_and_cooling": "Heating & Cooling Degree Days"
   }
 }
