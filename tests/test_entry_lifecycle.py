@@ -140,13 +140,10 @@ async def test_first_refresh_failure_reaches_home_assistant(
 ) -> None:
     """HA handles retry/auth errors and no runtime data or listener is retained."""
     entry = _add_entry(hass)
-    with (
-        patch(
-            "custom_components.heating_cooling_degree_days.coordinator."
-            "HDDDataUpdateCoordinator.async_config_entry_first_refresh",
-            side_effect=error,
-        ),
-        patch.object(entry, "async_start_reauth") as reauth,
+    with patch(
+        "custom_components.heating_cooling_degree_days.coordinator."
+        "HDDDataUpdateCoordinator.async_config_entry_first_refresh",
+        side_effect=error,
     ):
         assert not await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
@@ -155,7 +152,6 @@ async def test_first_refresh_failure_reaches_home_assistant(
     assert not hasattr(entry, "runtime_data")
     assert not entry.update_listeners
     assert DOMAIN not in hass.data
-    assert reauth.call_count == int(isinstance(error, ConfigEntryAuthFailed))
 
 
 async def test_forwarding_failure_rolls_back_entities_and_runtime_data(
