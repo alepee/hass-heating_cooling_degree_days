@@ -1,10 +1,10 @@
-"""DataUpdateCoordinator for heating_cooling_degree_days."""
+"""Fetch bounded recorder history and publish consistent calendar snapshots."""
 
-import calendar
-from collections import defaultdict
-from datetime import date, timedelta
+from dataclasses import asdict, replace
+from datetime import date, datetime, timedelta
 import logging
 
+from homeassistant.components.recorder import get_instance
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -16,34 +16,58 @@ from .const import (
     CONF_TEMPERATURE_UNIT,
     DOMAIN,
     SCAN_INTERVAL,
-    SENSOR_TYPE_CDD_DAILY,
-    SENSOR_TYPE_CDD_MONTHLY,
-    SENSOR_TYPE_CDD_WEEKLY,
-    SENSOR_TYPE_HDD_DAILY,
-    SENSOR_TYPE_HDD_MONTHLY,
-    SENSOR_TYPE_HDD_WEEKLY,
 )
 from .degree_days import DayResult, integrate_degree_days
 from .history import TemperatureHistory, get_temperature_history
+from .periods import (
+    DailyRecord,
+    aggregate_period,
+    calendar_periods,
+    day_seconds,
+    day_window,
+)
 
 _LOGGER = logging.getLogger(__name__)
-
-STORAGE_VERSION = 1
+STORAGE_VERSION = 2
 STORAGE_KEY = f"{DOMAIN}_data"
+MAX_BACKFILL_DAYS = 7
+PARTIAL_RETRY_INTERVAL = timedelta(hours=6)
+
+
+class DailyLedgerStore(Store[dict]):
+    """Migrate scalar histories without fabricating measured coverage."""
+
+    async def _async_migrate_func(self, old_major_version, old_minor_version, old_data):
+        """Retain v1 HDD/CDD values and mark their coverage as legacy/assumed."""
+        if old_major_version != 1:
+            raise NotImplementedError
+        hdd = old_data.get("daily_hdd_values", old_data.get("daily_values", {}))
+        cdd = old_data.get("daily_cdd_values", {})
+        return {
+            "config": old_data.get("config"),
+            "days": {
+                day: asdict(
+                    DailyRecord(
+                        hdd.get(day),
+                        cdd.get(day),
+                        None,
+                        day_seconds(date.fromisoformat(day), dt_util.DEFAULT_TIME_ZONE),
+                        None,
+                        legacy=True,
+                    )
+                )
+                for day in hdd.keys() | cdd.keys()
+            },
+        }
 
 
 async def async_remove_stored_data(hass: HomeAssistant, entry_id: str) -> None:
-    """Drop the daily values stored for an entry.
-
-    Called when the calculation settings change, so values calculated under the
-    previous settings are not mixed with the new ones.
-    """
+    """Drop daily values when calculation settings change."""
     await Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{entry_id}").async_remove()
-    _LOGGER.info("Removed stored daily values for entry %s", entry_id)
 
 
 class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
-    """Class to manage fetching HDD and CDD data."""
+    """Manage the entry's ledger and its published value/metadata snapshot."""
 
     def __init__(
         self,
@@ -57,13 +81,8 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
         include_weekly: bool = True,
         include_monthly: bool = True,
     ):
-        """Initialize."""
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=DOMAIN,
-            update_interval=SCAN_INTERVAL,
-        )
+        """Initialize per-entry storage and calculation settings."""
+        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL)
         self.temp_entity = temp_entity
         self.base_temp = base_temp
         self.temperature_unit = temperature_unit
@@ -71,437 +90,177 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
         self.include_cooling = include_cooling
         self.include_weekly = include_weekly
         self.include_monthly = include_monthly
+        self.ledger: dict[date, DailyRecord] = {}
+        self.period_attributes: dict[str, dict] = {}
         self.day_result: DayResult | None = None
         self.temperature_history: TemperatureHistory | None = None
-        self.daily_hdd_values = defaultdict(
-            float
-        )  # Storage for daily HDD values by date
-        self.daily_cdd_values = defaultdict(
-            float
-        )  # Storage for daily CDD values by date
-
-        # Initialize storage for persistent data
-        self._store = Store(
-            hass,
-            STORAGE_VERSION,
-            f"{STORAGE_KEY}_{entry_id}",
+        self._store = DailyLedgerStore(
+            hass, STORAGE_VERSION, f"{STORAGE_KEY}_{entry_id}"
         )
 
-        _LOGGER.info(
-            "Initialized HDDDataUpdateCoordinator with sensor %s, base temp %.1f°%s, "
-            "cooling: %s, weekly: %s, monthly: %s",
-            temp_entity,
-            base_temp,
-            temperature_unit,
-            "enabled" if include_cooling else "disabled",
-            "enabled" if include_weekly else "disabled",
-            "enabled" if include_monthly else "disabled",
-        )
+    @property
+    def daily_hdd_values(self) -> dict[date, float]:
+        """Return measured HDD values, excluding days without observations."""
+        return {
+            day: record.hdd
+            for day, record in self.ledger.items()
+            if record.hdd is not None
+        }
+
+    @property
+    def daily_cdd_values(self) -> dict[date, float]:
+        """Return measured CDD values, excluding days without observations."""
+        return {
+            day: record.cdd
+            for day, record in self.ledger.items()
+            if record.cdd is not None
+        }
 
     def _config_fingerprint(self) -> dict:
-        """Return the settings the stored daily values were calculated with."""
+        """Identify the source/base/unit shared by every record in this ledger."""
         return {
             CONF_TEMPERATURE_SENSOR: self.temp_entity,
             CONF_BASE_TEMPERATURE: self.base_temp,
             CONF_TEMPERATURE_UNIT: self.temperature_unit,
         }
 
-    def _is_stale(self, stored_data: dict) -> bool:
-        """Check whether stored values were calculated with other settings.
+    async def async_load_stored_data(self) -> None:
+        """Load or invalidate the ledger; storage failures must not erase history."""
+        stored = await self._store.async_load()
+        if not stored:
+            return
+        if stored.get("config") not in (None, self._config_fingerprint()):
+            _LOGGER.info("Calculation settings changed: rebuilding the daily ledger")
+            self.ledger = {}
+            await self._save_ledger(self.ledger)
+            return
+        self.ledger = {
+            date.fromisoformat(day): DailyRecord(**record)
+            for day, record in stored.get("days", {}).items()
+        }
+        if stored.get("config") is None:
+            await self._save_ledger(self.ledger)
 
-        Payloads written before the fingerprint existed carry no config block;
-        they are assumed to match, as they predate any reconfiguration.
-        """
-        stored_config = stored_data.get("config")
-        if not stored_config:
-            return False
-        return stored_config != self._config_fingerprint()
-
-    async def async_load_stored_data(self):
-        """Load stored daily values from persistent storage."""
-        try:
-            stored_data = await self._store.async_load()
-            if stored_data and self._is_stale(stored_data):
-                _LOGGER.info(
-                    "Calculation settings changed since the stored values were written: "
-                    "discarding %d HDD and %d CDD stored daily values",
-                    len(
-                        stored_data.get(
-                            "daily_hdd_values", stored_data.get("daily_values", {})
-                        )
-                    ),
-                    len(stored_data.get("daily_cdd_values", {})),
-                )
-                self.daily_hdd_values = defaultdict(float)
-                self.daily_cdd_values = defaultdict(float)
-                await self.async_save_data()
-                return
-
-            if stored_data:
-                # Convert date strings back to date objects
-                # Support both old "daily_values" key and new "daily_hdd_values" key for backward compatibility
-                hdd_key = (
-                    "daily_hdd_values"
-                    if "daily_hdd_values" in stored_data
-                    else "daily_values"
-                )
-                if hdd_key in stored_data:
-                    loaded_values = {
-                        date.fromisoformat(date_str): value
-                        for date_str, value in stored_data[hdd_key].items()
-                    }
-                    # Convert back to defaultdict for consistency
-                    self.daily_hdd_values = defaultdict(float, loaded_values)
-                    _LOGGER.info(
-                        "Loaded %d HDD daily values from storage",
-                        len(self.daily_hdd_values),
-                    )
-
-                if "daily_cdd_values" in stored_data:
-                    loaded_cdd_values = {
-                        date.fromisoformat(date_str): value
-                        for date_str, value in stored_data["daily_cdd_values"].items()
-                    }
-                    # Convert back to defaultdict for consistency
-                    self.daily_cdd_values = defaultdict(float, loaded_cdd_values)
-                    _LOGGER.info(
-                        "Loaded %d CDD daily values from storage",
-                        len(self.daily_cdd_values),
-                    )
-            else:
-                _LOGGER.debug("No stored data found, starting with empty history")
-        except Exception as ex:
-            _LOGGER.warning(
-                "Error loading stored data: %s. Starting with empty history.", str(ex)
-            )
-            # Reset to empty dictionaries on error
-            self.daily_hdd_values = defaultdict(float)
-            self.daily_cdd_values = defaultdict(float)
-
-    async def async_save_data(self):
-        """Save daily values to persistent storage."""
-        try:
-            # Convert date objects to ISO format strings for JSON serialization
-            data_to_save = {
+    async def _save_ledger(self, ledger: dict[date, DailyRecord]) -> None:
+        """Persist full precision and retry timestamps under one calculation fingerprint."""
+        await self._store.async_save(
+            {
                 "config": self._config_fingerprint(),
-                "daily_hdd_values": {
-                    date_obj.isoformat(): value
-                    for date_obj, value in self.daily_hdd_values.items()
-                },
-                "daily_cdd_values": {
-                    date_obj.isoformat(): value
-                    for date_obj, value in self.daily_cdd_values.items()
+                "days": {
+                    day.isoformat(): asdict(record) for day, record in ledger.items()
                 },
             }
-            await self._store.async_save(data_to_save)
-            _LOGGER.debug(
-                "Saved %d HDD and %d CDD daily values to storage",
-                len(self.daily_hdd_values),
-                len(self.daily_cdd_values),
+        )
+
+    def _backfill_dates(self, needed: set[date], now: datetime) -> list[date]:
+        """Prioritize yesterday, then unqueried days; retry partials every six hours."""
+        recorder = get_instance(self.hass)
+        cutoff = now.timestamp() - timedelta(days=recorder.keep_days).total_seconds()
+        candidates = []
+        for day in needed:
+            record = self.ledger.get(day)
+            if record and record.complete:
+                continue
+            _, end = day_window(day, now.tzinfo)
+            if recorder.auto_purge and end.timestamp() <= cutoff:
+                continue
+            if (
+                record
+                and now.timestamp() - record.last_attempt
+                < PARTIAL_RETRY_INTERVAL.total_seconds()
+            ):
+                continue
+            candidates.append(day)
+        yesterday = now.date() - timedelta(days=1)
+        candidates.sort(
+            key=lambda day: (
+                day != yesterday,
+                self.ledger[day].last_attempt if day in self.ledger else 0,
+                -day.toordinal(),
             )
-        except Exception as ex:
-            _LOGGER.error("Error saving data to storage: %s", str(ex))
+        )
+        return candidates[:MAX_BACKFILL_DAYS]
+
+    async def async_midnight_refresh(self, _now: datetime) -> None:
+        """Roll calendar periods over shortly after local midnight."""
+        await self.async_request_refresh()
 
     async def _async_update_data(self) -> dict[str, float | None]:
-        """Update data via library."""
+        """Backfill bounded history, then atomically publish values and their labels."""
         now = dt_util.now()
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        yesterday_start = today_start - timedelta(days=1)
-        yesterday_date = yesterday_start.date()
-
-        _LOGGER.debug(
-            "Starting data update for period %s to %s",
-            yesterday_start.isoformat(),
-            today_start.isoformat(),
+        periods = calendar_periods(now.date())
+        if not self.include_weekly:
+            del periods["weekly"]
+        if not self.include_monthly:
+            del periods["monthly"]
+        needed = {day for period in periods.values() for day in period.completed_days}
+        ledger = {
+            day: record
+            for day, record in self.ledger.items()
+            if day >= now.date() - timedelta(days=60)
+        }
+        yesterday = now.date() - timedelta(days=1)
+        yesterday_history = (
+            self.temperature_history
+            if self.period_attributes.get("hdd_daily", {}).get("period_start")
+            == str(yesterday)
+            else None
         )
-
-        # Get temperature readings for yesterday (full day)
-        history = await get_temperature_history(
-            self.hass,
-            yesterday_start,
-            today_start,
-            self.temp_entity,
-            self.temperature_unit,
-        )
-        day_result = integrate_degree_days(
-            history.samples, yesterday_start, today_start, self.base_temp
-        )
-        self.temperature_history = history
-        self.day_result = day_result
-        # Missing coverage is not a measured zero. Period coverage/backfill is
-        # handled separately from the daily kernel.
-        daily_hdd = day_result.hdd if day_result.coverage_seconds else None
-        daily_cdd = day_result.cdd if day_result.coverage_seconds else None
-
-        # Store the observed portion of yesterday, keeping full precision.
-        data_changed = False
-        if day_result.coverage_seconds:
-            self.daily_hdd_values[yesterday_date] = daily_hdd
-            data_changed = True
-            _LOGGER.debug(
-                "Calculated daily HDD for %s: %.2f (from %d readings)",
-                yesterday_date,
-                daily_hdd,
-                len(history.samples),
+        for day in self._backfill_dates(needed, now):
+            start, end = day_window(day, now.tzinfo)
+            history = await get_temperature_history(
+                self.hass,
+                start,
+                end,
+                self.temp_entity,
+                self.temperature_unit,
             )
+            result = integrate_degree_days(history.samples, start, end, self.base_temp)
+            record = DailyRecord.from_result(result, now)
+            old = ledger.get(day)
+            # A purge or rewritten history must not reduce an accumulating total.
+            # Keep the entire previous observation (including coverage/mean),
+            # rather than combining incompatible values from two recorder reads.
+            if old and (
+                (old.coverage_seconds or 0) >= result.coverage_seconds
+                or (old.hdd or 0) > result.hdd
+                or (old.cdd or 0) > result.cdd
+            ):
+                record = replace(old, last_attempt=now.timestamp())
+            elif day == yesterday:
+                yesterday_history = history
+            ledger[day] = record
 
-            # Calculate and store CDD if enabled
-            if self.include_cooling:
-                self.daily_cdd_values[yesterday_date] = daily_cdd
-                data_changed = True
-                _LOGGER.debug(
-                    "Calculated daily CDD for %s: %.2f (from %d readings)",
-                    yesterday_date,
-                    daily_cdd,
-                    len(history.samples),
+        if ledger != self.ledger:
+            await self._save_ledger(ledger)
+        values = {}
+        attributes = {}
+        for metric in ("hdd", "cdd") if self.include_cooling else ("hdd",):
+            for name, period in periods.items():
+                key = f"{metric}_{name}"
+                values[key], attributes[key] = aggregate_period(
+                    ledger, period, metric, now.tzinfo
                 )
-
-        # Clean up old data (keep 60 days maximum)
-        old_hdd_count, old_cdd_count = self._cleanup_old_data(60)
-        if old_hdd_count or old_cdd_count:
-            data_changed = True
-            _LOGGER.debug(
-                "Cleaned up %d old HDD values and %d old CDD values",
-                old_hdd_count,
-                old_cdd_count,
+                if (
+                    name == "daily"
+                    and (record := ledger.get(yesterday))
+                    and record.mean_temp is not None
+                ):
+                    attributes[key]["mean_temperature"] = round(record.mean_temp, 1)
+        # Nothing observable changes until all recorder reads and the save succeed.
+        self.ledger = ledger
+        self.period_attributes = attributes
+        self.temperature_history = yesterday_history
+        record = ledger.get(yesterday)
+        self.day_result = (
+            DayResult(
+                record.hdd or 0,
+                record.cdd or 0,
+                record.coverage_seconds or 0,
+                record.window_seconds,
+                record.mean_temp,
             )
-
-        # Save data to persistent storage if it changed
-        if data_changed:
-            await self.async_save_data()
-
-        # Prepare result dict - daily values are always included
-        result = {
-            SENSOR_TYPE_HDD_DAILY: daily_hdd,
-        }
-
-        # Add weekly and monthly HDD if enabled
-        if self.include_weekly:
-            weekly_hdd = self._calculate_current_week_hdd(yesterday_date)
-            result[SENSOR_TYPE_HDD_WEEKLY] = weekly_hdd
-            _LOGGER.debug("Calculated weekly HDD: %.2f", weekly_hdd)
-
-        if self.include_monthly:
-            monthly_hdd = self._calculate_current_month_hdd(yesterday_date)
-            result[SENSOR_TYPE_HDD_MONTHLY] = monthly_hdd
-            _LOGGER.debug("Calculated monthly HDD: %.2f", monthly_hdd)
-
-        # Add CDD data if enabled
-        if self.include_cooling:
-            result[SENSOR_TYPE_CDD_DAILY] = daily_cdd
-
-            if self.include_weekly:
-                weekly_cdd = self._calculate_current_week_cdd(yesterday_date)
-                result[SENSOR_TYPE_CDD_WEEKLY] = weekly_cdd
-                _LOGGER.debug("Calculated weekly CDD: %.2f", weekly_cdd)
-
-            if self.include_monthly:
-                monthly_cdd = self._calculate_current_month_cdd(yesterday_date)
-                result[SENSOR_TYPE_CDD_MONTHLY] = monthly_cdd
-                _LOGGER.debug("Calculated monthly CDD: %.2f", monthly_cdd)
-
-        return result
-
-    def _cleanup_old_data(self, days_to_keep):
-        """Remove old data from daily values history."""
-        cutoff_date = dt_util.now().date() - timedelta(days=days_to_keep)
-
-        # Count items to be removed for logging
-        hdd_before_count = len(self.daily_hdd_values)
-        cdd_before_count = len(self.daily_cdd_values)
-
-        # Create new dictionaries with only recent values
-        filtered_hdd = {
-            date: value
-            for date, value in self.daily_hdd_values.items()
-            if date >= cutoff_date
-        }
-        self.daily_hdd_values = defaultdict(float, filtered_hdd)
-
-        filtered_cdd = {
-            date: value
-            for date, value in self.daily_cdd_values.items()
-            if date >= cutoff_date
-        }
-        self.daily_cdd_values = defaultdict(float, filtered_cdd)
-
-        # Return count of removed items
-        return (
-            hdd_before_count - len(self.daily_hdd_values),
-            cdd_before_count - len(self.daily_cdd_values),
+            if record
+            else None
         )
-
-    def _calculate_current_week_hdd(self, reference_date):
-        """Calculate weekly HDD by summing daily values.
-
-        Week is defined as Monday to Sunday.
-        """
-        # Determine the start of the week (Monday)
-        weekday = reference_date.weekday()
-        week_start = reference_date - timedelta(days=weekday)
-        week_end = week_start + timedelta(days=6)
-
-        _LOGGER.debug(
-            "Calculating weekly HDD from %s to %s",
-            week_start.isoformat(),
-            week_end.isoformat(),
-        )
-
-        # Check for missing data in the week
-        missing_dates = []
-        for i in range(7):
-            current_date = week_start + timedelta(days=i)
-            if (
-                current_date <= dt_util.now().date()
-                and current_date not in self.daily_hdd_values
-            ):
-                missing_dates.append(current_date)
-
-        if missing_dates:
-            _LOGGER.debug(
-                "Missing HDD data for dates in current week: %s",
-                ", ".join(date.isoformat() for date in missing_dates),
-            )
-
-        # Sum all daily values that fall within this week
-        weekly_hdd = 0
-        for i in range(7):  # Monday to Sunday
-            current_date = week_start + timedelta(days=i)
-            daily_value = self.daily_hdd_values.get(current_date, 0)
-            weekly_hdd += daily_value
-
-        return weekly_hdd
-
-    def _calculate_current_month_hdd(self, reference_date):
-        """Calculate monthly HDD by summing daily values.
-
-        Month is defined as 1st to last day of the month.
-        """
-        # First day of current month
-        month_start = reference_date.replace(day=1)
-
-        # Last day of current month
-        _, last_day = calendar.monthrange(reference_date.year, reference_date.month)
-        month_end = reference_date.replace(day=last_day)
-
-        _LOGGER.debug(
-            "Calculating monthly HDD from %s to %s",
-            month_start.isoformat(),
-            month_end.isoformat(),
-        )
-
-        # Check for missing data in the month
-        missing_dates = []
-        current_date = month_start
-        while current_date <= min(dt_util.now().date(), month_end):
-            if current_date not in self.daily_hdd_values:
-                missing_dates.append(current_date)
-            current_date += timedelta(days=1)
-
-        if missing_dates:
-            _LOGGER.debug(
-                "Missing HDD data for dates in current month: %s",
-                ", ".join(date.isoformat() for date in missing_dates[:5])
-                + (
-                    f" and {len(missing_dates) - 5} more"
-                    if len(missing_dates) > 5
-                    else ""
-                ),
-            )
-
-        # Sum all daily values that fall within this month
-        monthly_hdd = 0
-        current_date = month_start
-
-        while current_date <= month_end:
-            monthly_hdd += self.daily_hdd_values.get(current_date, 0)
-            current_date += timedelta(days=1)
-
-        return monthly_hdd
-
-    def _calculate_current_week_cdd(self, reference_date):
-        """Calculate weekly CDD by summing daily values.
-
-        Week is defined as Monday to Sunday.
-        """
-        # Determine the start of the week (Monday)
-        weekday = reference_date.weekday()
-        week_start = reference_date - timedelta(days=weekday)
-        week_end = week_start + timedelta(days=6)
-
-        _LOGGER.debug(
-            "Calculating weekly CDD from %s to %s",
-            week_start.isoformat(),
-            week_end.isoformat(),
-        )
-
-        # Check for missing data in the week
-        missing_dates = []
-        for i in range(7):
-            current_date = week_start + timedelta(days=i)
-            if (
-                current_date <= dt_util.now().date()
-                and current_date not in self.daily_cdd_values
-            ):
-                missing_dates.append(current_date)
-
-        if missing_dates:
-            _LOGGER.debug(
-                "Missing CDD data for dates in current week: %s",
-                ", ".join(date.isoformat() for date in missing_dates),
-            )
-
-        # Sum all daily values that fall within this week
-        weekly_cdd = 0
-        for i in range(7):  # Monday to Sunday
-            current_date = week_start + timedelta(days=i)
-            weekly_cdd += self.daily_cdd_values.get(current_date, 0)
-
-        return weekly_cdd
-
-    def _calculate_current_month_cdd(self, reference_date):
-        """Calculate monthly CDD by summing daily values.
-
-        Month is defined as 1st to last day of the month.
-        """
-        # First day of current month
-        month_start = reference_date.replace(day=1)
-
-        # Last day of current month
-        _, last_day = calendar.monthrange(reference_date.year, reference_date.month)
-        month_end = reference_date.replace(day=last_day)
-
-        _LOGGER.debug(
-            "Calculating monthly CDD from %s to %s",
-            month_start.isoformat(),
-            month_end.isoformat(),
-        )
-
-        # Check for missing data in the month
-        missing_dates = []
-        current_date = month_start
-        while current_date <= min(dt_util.now().date(), month_end):
-            if current_date not in self.daily_cdd_values:
-                missing_dates.append(current_date)
-            current_date += timedelta(days=1)
-
-        if missing_dates:
-            _LOGGER.debug(
-                "Missing CDD data for dates in current month: %s",
-                ", ".join(date.isoformat() for date in missing_dates[:5])
-                + (
-                    f" and {len(missing_dates) - 5} more"
-                    if len(missing_dates) > 5
-                    else ""
-                ),
-            )
-
-        # Sum all daily values that fall within this month
-        monthly_cdd = 0
-        current_date = month_start
-
-        while current_date <= month_end:
-            monthly_cdd += self.daily_cdd_values.get(current_date, 0)
-            current_date += timedelta(days=1)
-
-        return monthly_cdd
+        return values

@@ -6,6 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.event import async_track_time_change
 
 from .const import (
     CONF_BASE_TEMPERATURE,
@@ -111,6 +112,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: HDDConfigEntry) -> bool:
 
         # This listener owns reloads, including title changes and reconfiguration.
         entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+        entry.async_on_unload(
+            async_track_time_change(
+                hass, coordinator.async_midnight_refresh, hour=0, minute=0, second=5
+            )
+        )
         setup_complete = True
     finally:
         if not setup_complete:

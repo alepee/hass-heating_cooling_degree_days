@@ -1,7 +1,5 @@
 """Sensor platform for heating_cooling_degree_days."""
 
-import calendar
-from datetime import timedelta
 import logging
 
 from homeassistant.components.sensor import (
@@ -12,20 +10,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.util import dt as dt_util
 
 from . import HDDConfigEntry
 from .const import (
     ATTR_BASE_TEMPERATURE,
-    ATTR_DATE_RANGE,
-    ATTR_MEAN_TEMPERATURE,
     DOMAIN,
     SENSOR_TYPE_CDD_DAILY,
-    SENSOR_TYPE_CDD_MONTHLY,
-    SENSOR_TYPE_CDD_WEEKLY,
     SENSOR_TYPE_HDD_DAILY,
-    SENSOR_TYPE_HDD_MONTHLY,
-    SENSOR_TYPE_HDD_WEEKLY,
     get_enabled_sensor_types,
 )
 from .coordinator import HDDDataUpdateCoordinator
@@ -64,7 +55,6 @@ async def async_setup_entry(
 class DegreeDegreeSensor(CoordinatorEntity, SensorEntity):
     """Representation of a degree days sensor (HDD or CDD)."""
 
-    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_has_entity_name = True
 
     def __init__(
@@ -75,6 +65,11 @@ class DegreeDegreeSensor(CoordinatorEntity, SensorEntity):
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
+        self._attr_state_class = (
+            None
+            if sensor_type in (SENSOR_TYPE_HDD_DAILY, SENSOR_TYPE_CDD_DAILY)
+            else SensorStateClass.TOTAL_INCREASING
+        )
         self.sensor_type = sensor_type
         self._attr_unique_id = f"{entry.entry_id}_{sensor_type}"
         self._attr_translation_key = sensor_type
@@ -125,61 +120,8 @@ class DegreeDegreeSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        """Return the state attributes."""
-        attrs = {
+        """Return metadata from the same completed refresh as the sensor value."""
+        return {
             ATTR_BASE_TEMPERATURE: self.coordinator.base_temp,
-            ATTR_DATE_RANGE: self._get_date_range(),
+            **self.coordinator.period_attributes.get(self.sensor_type, {}),
         }
-
-        # Only add mean temperature for daily sensors
-        mean_temp = self._get_mean_temperature()
-        if mean_temp is not None:
-            attrs[ATTR_MEAN_TEMPERATURE] = mean_temp
-
-        if (
-            self.sensor_type in (SENSOR_TYPE_HDD_DAILY, SENSOR_TYPE_CDD_DAILY)
-            and (result := self.coordinator.day_result) is not None
-        ):
-            attrs["coverage"] = result.coverage_seconds / result.window_seconds
-            attrs["partial"] = result.coverage_seconds < result.window_seconds
-
-        return attrs
-
-    def _get_date_range(self):
-        """Get the date range for the current value."""
-        now = dt_util.now()
-        today = now.date()
-
-        if self.sensor_type in [SENSOR_TYPE_HDD_DAILY, SENSOR_TYPE_CDD_DAILY]:
-            # The daily value represents yesterday
-            yesterday = today - timedelta(days=1)
-            return f"{yesterday}"
-
-        elif self.sensor_type in [SENSOR_TYPE_HDD_WEEKLY, SENSOR_TYPE_CDD_WEEKLY]:
-            # From Monday to Sunday
-            weekday = today.weekday()
-            week_start = today - timedelta(days=weekday)  # Monday
-            week_end = week_start + timedelta(days=6)  # Sunday
-            return f"{week_start} to {week_end}"
-
-        elif self.sensor_type in [SENSOR_TYPE_HDD_MONTHLY, SENSOR_TYPE_CDD_MONTHLY]:
-            # From 1st to last day of the month
-            month_start = today.replace(day=1)
-            _, last_day = calendar.monthrange(today.year, today.month)
-            month_end = today.replace(day=last_day)
-            return f"{month_start} to {month_end}"
-
-        return "Unknown period"
-
-    def _get_mean_temperature(self):
-        """Get the mean temperature for the period."""
-        if (
-            self.sensor_type in [SENSOR_TYPE_HDD_DAILY, SENSOR_TYPE_CDD_DAILY]
-            and (result := self.coordinator.day_result) is not None
-            and result.mean_temp is not None
-        ):
-            return round(result.mean_temp, 1)
-
-        # For weekly and monthly, we don't have an average temperature
-        # because these values are accumulations
-        return None

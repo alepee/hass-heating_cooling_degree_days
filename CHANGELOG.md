@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Weekly and monthly sensors now sum completed days of the current calendar period, resetting on Monday and on the 1st. Values and period labels share one snapshot, refreshed shortly after local midnight.
+- Missing completed days are backfilled from retained recorder history (up to seven dates per refresh). Coverage, missing-day counts and partial status expose remaining gaps; finalized days are cached, and partial days are retried every six hours while retained.
 - Integrate every recorder interval using the last known temperature, including the start-state and the final interval to midnight. Minute and subminute samples are no longer discarded.
 - Convert each recorded temperature from its own unit and preserve invalid/unavailable states as gaps. Recorder failures no longer appear as successful measurements.
 - Calculate a time-weighted daily mean and expose daily coverage and partial status. Use elapsed seconds on daylight-saving days and round only when displaying sensor values.
@@ -16,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reconfigure flow: the temperature source, base temperature and cooling/weekly/monthly options of an existing entry can be changed from the integration page, prefilled with the current settings (#126, fixes #125)
 
 ### Changed
+- Weekly/monthly sensors use `total_increasing`; daily sensors no longer have a state class. Entity IDs are preserved. Home Assistant may ask you to fix statistics once after the state-class/unit change in Developer Tools > Statistics; existing statistics are not rewritten automatically.
+- Daily storage now retains raw integrals, coverage and mean temperature. Legacy scalar values are preserved with assumed complete coverage, identified by `legacy_days`; absent legacy cooling values remain unknown. Source/base/unit changes invalidate this ledger and rebuild only the history still available in recorder, without recalculating existing Home Assistant long-term statistics.
 - Minimum Home Assistant version raised to 2025.1, matching the tested support floor
 - Sensor types turned off in the configuration now have their entities removed instead of being left behind as unavailable
 - Stored daily values carry the settings they were calculated with, and are reset when the temperature source, the base temperature or the unit changes

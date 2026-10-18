@@ -24,7 +24,7 @@ For example, if you set a base temperature of 21°C (69.8°F):
 
 This integration uses a numerical integration method for calculating degree days:
 
-1. Recorder states are read for the previous local calendar day, including the state at its start.
+1. Recorder states are read for completed local calendar days, including the state at each day's start.
 2. Each state's temperature is converted from its recorded unit to the configured calculation unit. If its unit is missing, the current source unit (or the calculation unit) is assumed and recorded internally.
 3. A temperature holds until the next state or the end of the day. Unknown, unavailable, non-numeric, non-finite, or unsupported-unit states start gaps; gaps are never interpolated through.
 4. Heating deficits and cooling excesses are multiplied by their elapsed seconds, summed, and divided by 86,400. No short intervals are dropped.
@@ -36,11 +36,31 @@ heating deficit produces 8 × 23/24 degree days on a 23-hour day and 8 × 25/24
 on a 25-hour day. The mean temperature is weighted by the duration of valid
 states, excluding gaps.
 
-Daily sensors expose `coverage` (a fraction from 0 to 1) and `partial`. Partial
-values include only covered time, with no extrapolation to a complete day. A day
-with no covered time is unknown, not zero. Recorder query failures mark sensors
-unavailable instead of publishing a successful cached value. Period-wide gap
-tracking and backfill are separate from this daily calculation.
+Daily sensors represent yesterday. Weekly and monthly sensors sum only completed
+days of the current calendar week (Monday start) or month. They reset to zero on
+Monday or the 1st, respectively, and refresh at 00:00:05 local time as well as
+every five minutes. Today is never included in a historical total.
+
+All sensors expose `coverage` (covered seconds divided by the expected elapsed
+seconds), `partial`, `missing_days`, `days_counted`, `period_start`, `period_end`
+and `completed_through`. Period boundaries label the full calendar period;
+coverage and totals stop at yesterday. An empty new period has zero value and
+coverage 1. A nonempty period with no observed time is unknown. Partial values
+include only covered time, without extrapolating across gaps. Recorder query
+failures mark sensors unavailable and retain the previous snapshot.
+
+Missing days are backfilled from recorder, at most seven dates per refresh,
+prioritizing yesterday and recent unqueried days. Completed days with full
+coverage are cached; partial/empty days are retried every six hours while within
+recorder retention. Retries that reduce coverage or either cached integral keep
+the previous observation to avoid artificial statistics resets. The ledger keeps
+60 days. Coverage can remain partial if recorder has purged or never recorded
+the source. Legacy daily totals are preserved with coverage assumed complete,
+flagged by `legacy_days`; absent legacy cooling values remain unknown.
+
+Weekly/monthly sensors use `total_increasing`; daily sensors have no state class.
+After upgrading, Home Assistant may request a one-time statistics correction in
+Developer Tools > Statistics. Existing long-term statistics are not rewritten.
 
 **Note**: Values are kept unrounded for calculations and storage, and displayed
 with 1 decimal place (e.g., `12.3°C·d`). Previously stored daily totals are not
@@ -89,7 +109,9 @@ Entity IDs and history are preserved. Turning off the cooling, weekly or monthly
 sensors removes the matching entities. Changing the temperature source, the base
 temperature or the unit invalidates the stored daily values, so they are reset
 instead of being mixed with values calculated under the previous settings, and
-the weekly and monthly totals rebuild from the following day onwards.
+the weekly and monthly totals rebuild in bounded batches from history still
+available in recorder. Home Assistant's existing long-term statistics are not
+recalculated; changing calculation settings starts a new basis for future totals.
 
 ## Features
 
