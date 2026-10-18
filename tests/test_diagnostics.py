@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime, timedelta
 import json
 from unittest.mock import patch
 
+from aiohttp.resolver import ThreadedResolver
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -188,6 +189,8 @@ async def test_unknown_legacy_coverage_and_last_attempt(hass, diagnostic_entry):
     assert record["last_attempt"] == attempted.isoformat()
 
 
+# The local HTTP test needs no DNS; avoid pycares global shutdown threads on HA 2025.1.
+@patch("aiohttp.connector.DefaultResolver", ThreadedResolver)
 async def test_diagnostics_download_via_home_assistant(
     hass, hass_client, diagnostic_entry
 ):
