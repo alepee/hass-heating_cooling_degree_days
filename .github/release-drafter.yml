@@ -68,7 +68,6 @@ autolabeler:
   - label: "dev tools"
     files:
       - ".github/*"
-      - ".devcontainer/*"
       - "links.sh"
       - "Makefile"
       - "setup.cfg"
