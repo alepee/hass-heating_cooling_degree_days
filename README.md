@@ -102,7 +102,7 @@ If you download GitHub's source archive instead, copy its
 ### Changing the settings later
 
 1. Go to Settings -> Devices & Services -> Heating & Cooling Degree Days
-2. On the entry, open the three-dot menu and choose "Reconfigure"
+2. On the entry, open the three-dot menu (⋮) and choose "Reconfigure". There is no "Configure" button: all settings are edited through this menu entry
 3. The form is prefilled with the current settings; change what you need
 
 Entity IDs and history are preserved. Turning off the cooling, weekly or monthly
