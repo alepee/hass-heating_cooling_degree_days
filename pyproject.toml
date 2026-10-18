@@ -9,8 +9,6 @@ dependencies = []
 [dependency-groups]
 dev = [
     "pytest-homeassistant-custom-component",
-    "pytest",
-    "pytest-asyncio",
     "ruff==0.16.6",
     "pre-commit>=4.6.0",
     "colorlog>=6.9.0",

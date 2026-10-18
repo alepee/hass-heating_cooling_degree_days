@@ -21,6 +21,8 @@ from homeassistant.data_entry_flow import FlowResultType
 
 TEMP_SENSOR = "sensor.outdoor_temperature"
 
+pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
+
 BASE_USER_INPUT = {
     CONF_TEMPERATURE_SENSOR: TEMP_SENSOR,
     CONF_BASE_TEMPERATURE: 18.0,

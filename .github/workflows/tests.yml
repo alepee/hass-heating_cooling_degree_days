@@ -12,13 +12,11 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # Installing Python alone does not override the repository's .python-version.
+      UV_PYTHON: ${{ matrix.python-version }}
     # pytest-homeassistant-custom-component (phac) pins a specific HA version.
     # To test against a given HA release, install the matching phac version.
-    #
-    # HA version  | phac version
-    # ------------|-------------
-    # 2025.1.0    | 0.13.201
-    # 2026.2.0    | 0.13.313
     strategy:
       fail-fast: false
       matrix:
@@ -27,10 +25,11 @@ jobs:
           - ha-version: "2025.1.0"
             phac-version: "0.13.201"
             python-version: "3.13"
-          # Latest HA (resolved dynamically via latest phac)
-          - ha-version: "latest"
+          # Reproducible development environment
+          - ha-version: "locked"
             phac-version: ""
             python-version: "3.13"
+          # Canary: latest published phac, not the lockfile's version
           - ha-version: "latest"
             phac-version: ""
             python-version: "3.14"
@@ -47,14 +46,51 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --group dev
+        run: uv sync --locked --group dev
 
       - name: Pin HA ${{ matrix.ha-version }}
         if: matrix.phac-version != ''
         run: uv pip install --prerelease=allow pytest-homeassistant-custom-component==${{ matrix.phac-version }}
 
-      - name: Show resolved HA version
-        run: uv run python -c "from homeassistant.const import __version__; print('HA version:', __version__)"
+      - name: Upgrade to latest test harness
+        if: matrix.ha-version == 'latest'
+        run: uv pip install --upgrade pytest-homeassistant-custom-component
+
+      - name: Assert resolved HA and test harness versions
+        env:
+          EXPECTED_HA: ${{ matrix.ha-version }}
+          EXPECTED_PHAC: ${{ matrix.phac-version }}
+          EXPECTED_PYTHON: ${{ matrix.python-version }}
+        run: |
+          uv run --no-sync python - <<'PY'
+          import json
+          import os
+          import sys
+          from importlib.metadata import requires, version
+          from urllib.request import urlopen
+
+          from packaging.requirements import Requirement
+
+          package = "pytest-homeassistant-custom-component"
+          ha, phac = version("homeassistant"), version(package)
+          expected_ha = os.environ["EXPECTED_HA"]
+          expected_phac = os.environ["EXPECTED_PHAC"]
+          python = f"{sys.version_info.major}.{sys.version_info.minor}"
+          assert python == os.environ["EXPECTED_PYTHON"], sys.version
+          print(f"Home Assistant: {ha}; test harness: {phac}", flush=True)
+          ha_requirement = next(
+              Requirement(item) for item in requires(package)
+              if Requirement(item).name == "homeassistant"
+          )
+          assert ha in ha_requirement.specifier, (ha, str(ha_requirement))
+          if expected_ha == "latest":
+              with urlopen(f"https://pypi.org/pypi/{package}/json", timeout=30) as response:
+                  expected_phac = json.load(response)["info"]["version"]
+          elif expected_ha != "locked":
+              assert ha == expected_ha, (ha, expected_ha)
+          if expected_phac:
+              assert phac == expected_phac, (phac, expected_phac)
+          PY
 
       - name: Run tests with pytest
-        run: uv run pytest
+        run: uv run --no-sync pytest

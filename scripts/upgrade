@@ -4,5 +4,7 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-echo "⚠ Temporary override — 'make install' will restore the lockfile version."
+uv sync --locked --group dev
+
+echo "Temporary override: make ha-run preserves it; make install restores the lockfile."
 uv pip install --upgrade --pre homeassistant

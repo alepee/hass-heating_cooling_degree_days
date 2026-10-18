@@ -2,7 +2,6 @@
 
 from datetime import date
 
-import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.heating_cooling_degree_days.const import (
@@ -28,17 +27,6 @@ ENTRY_DATA = {
     CONF_INCLUDE_WEEKLY: True,
     CONF_INCLUDE_MONTHLY: True,
 }
-
-
-@pytest.fixture(autouse=True)
-def _auto_enable_custom_integrations():
-    """Override the conftest autouse fixture for this module.
-
-    The conftest version depends on ``enable_custom_integrations`` → ``hass``,
-    which would initialize ``hass`` before ``recorder_db_url`` and break
-    ``recorder_mock`` ordering. Tests here request ``recorder_mock`` and
-    ``enable_custom_integrations`` explicitly, in that order, instead.
-    """
 
 
 async def test_migrate_v1_entry_rewrites_unique_ids(
@@ -121,15 +109,15 @@ async def test_entry_rename_propagates_to_device_name(
     await hass.async_block_till_done()
 
     device_registry = dr.async_get(hass)
-    device = device_registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
-    assert device is not None
+    (device,) = dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+    assert device.identifiers == {(DOMAIN, entry.entry_id)}
     assert device.name == "Salon"
 
     # Simulate a UI rename of the config entry (title-only update).
     hass.config_entries.async_update_entry(entry, title="Garage")
     await hass.async_block_till_done()
 
-    device = device_registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    (device,) = dr.async_entries_for_config_entry(device_registry, entry.entry_id)
     assert device.name == "Garage"
 
 

@@ -142,6 +142,26 @@ make ha-run
 Home Assistant uses `http://localhost:8123` by default. Its local configuration
 is in `config/`. In VS Code, select `.venv/bin/python` as the interpreter.
 
+`make ha-upgrade`, `make ha-dev-branch` and `make ha-version` first restore the
+locked environment, then temporarily replace Home Assistant. `make ha-run`
+preserves that override; run `make install` to return to the lockfile. For tests
+after a deliberate dependency override, use `uv run --no-sync pytest` because
+ordinary `uv run` restores locked dependencies.
+
+CI tests HA 2025.1.0, the locked Python 3.13 environment, and the latest published
+`pytest-homeassistant-custom-component` (phac) on Python 3.14. Each row verifies
+the installed HA version against its harness; the floor and latest rows also
+assert their requested versions. The canary fails if the latest harness needs
+a newer Python instead of silently falling back to an older harness.
+
+phac owns the pytest and pytest-asyncio versions. Dependabot updates independent
+development tools, but excludes this tightly pinned family and Home Assistant:
+forcing one newest harness version across the universal lock can exclude older
+Python versions. To refresh the harness deliberately, run
+`uv lock --upgrade-package pytest-homeassistant-custom-component`, review the
+Python-specific resolutions, and run all CI rows. Keep the explicit HA floor pin
+until the minimum supported version is deliberately changed.
+
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for a detailed list of changes and version history.
