@@ -55,6 +55,7 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator):
         base_temp: float,
         temperature_unit: str,
         entry_id: str,
+        *,
         include_cooling: bool = False,
         include_weekly: bool = True,
         include_monthly: bool = True,
