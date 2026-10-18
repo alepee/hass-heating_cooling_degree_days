@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Degrés-Jours de Chauffage et de Refroidissement",
-        "description": "Configurer le calcul des degrés-jours de chauffage et de refroidissement",
+        "description": "Configurer le calcul des degrés-jours de chauffage et de refroidissement. Saisissez la température de base en {temperature_unit}.",
         "data": {
           "name": "Nom",
           "temperature_sensor": "Capteur de température extérieure",
@@ -19,7 +19,7 @@
       },
       "reconfigure": {
         "title": "Degrés-Jours de Chauffage et de Refroidissement",
-        "description": "Modifier les paramètres de calcul des degrés-jours",
+        "description": "Modifier les paramètres de calcul des degrés-jours. Saisissez la température de base en {temperature_unit}, l’unité enregistrée pour cette instance.",
         "data": {
           "name": "Nom",
           "temperature_sensor": "Capteur de température extérieure",
@@ -30,12 +30,13 @@
         },
         "data_description": {
           "name": "Utilisé comme titre de l'instance et nom de l'appareil. Si vide, un nom est dérivé de la température de base, par ex. « Heating Degree Days (18.0°C) ».",
-          "base_temperature": "La température de base par défaut est de 18°C pour Celsius ou 65°F pour Fahrenheit, selon votre système d'unités"
+          "base_temperature": "L’unité enregistrée pour cette instance est conservée lorsque le système d’unités de Home Assistant change."
         }
       }
     },
     "error": {
-      "invalid_temperature_sensor": "Capteur de température invalide. Veuillez sélectionner un capteur de température valide."
+      "invalid_temperature_sensor": "Sélectionnez un capteur existant avec la classe température ou une unité de température (°C, °F ou K).",
+      "invalid_base_temperature": "Saisissez un nombre fini pour la température de base."
     },
     "abort": {
       "already_configured": "Une instance avec ce capteur de température et cette température de base existe déjà.",

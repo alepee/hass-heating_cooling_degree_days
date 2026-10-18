@@ -8,13 +8,13 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
+from . import HDDConfigEntry
 from .const import (
     ATTR_BASE_TEMPERATURE,
     ATTR_DATE_RANGE,
@@ -26,6 +26,7 @@ from .const import (
     SENSOR_TYPE_HDD_DAILY,
     SENSOR_TYPE_HDD_MONTHLY,
     SENSOR_TYPE_HDD_WEEKLY,
+    get_enabled_sensor_types,
 )
 from .coordinator import HDDDataUpdateCoordinator
 
@@ -34,11 +35,11 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: HDDConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the HDD and CDD sensors."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
 
     _LOGGER.info(
         "Setting up degree days sensors with temperature sensor %s and base temperature %.1f°%s",
@@ -47,39 +48,14 @@ async def async_setup_entry(
         coordinator.temperature_unit,
     )
 
-    # Start with the daily HDD sensor which is always included
-    sensors = [DegreeDegreeSensor(coordinator, entry, SENSOR_TYPE_HDD_DAILY)]
-    _LOGGER.debug("Created HDD daily sensor")
-
-    # Add weekly and monthly HDD sensors if enabled
-    if coordinator.include_weekly:
-        sensors.append(DegreeDegreeSensor(coordinator, entry, SENSOR_TYPE_HDD_WEEKLY))
-        _LOGGER.debug("Created HDD weekly sensor")
-
-    if coordinator.include_monthly:
-        sensors.append(DegreeDegreeSensor(coordinator, entry, SENSOR_TYPE_HDD_MONTHLY))
-        _LOGGER.debug("Created HDD monthly sensor")
-
-    # Add CDD sensors if enabled
-    if coordinator.include_cooling:
-        # Daily CDD sensor is always included if cooling is enabled
-        sensors.append(DegreeDegreeSensor(coordinator, entry, SENSOR_TYPE_CDD_DAILY))
-        _LOGGER.debug("Created CDD daily sensor")
-
-        # Add weekly and monthly CDD sensors if both cooling and respective period are enabled
-        if coordinator.include_weekly:
-            sensors.append(
-                DegreeDegreeSensor(coordinator, entry, SENSOR_TYPE_CDD_WEEKLY)
-            )
-            _LOGGER.debug("Created CDD weekly sensor")
-
-        if coordinator.include_monthly:
-            sensors.append(
-                DegreeDegreeSensor(coordinator, entry, SENSOR_TYPE_CDD_MONTHLY)
-            )
-            _LOGGER.debug("Created CDD monthly sensor")
-    else:
-        _LOGGER.debug("CDD sensors not enabled in configuration")
+    sensors = [
+        DegreeDegreeSensor(coordinator, entry, sensor_type)
+        for sensor_type in get_enabled_sensor_types(
+            coordinator.include_cooling,
+            coordinator.include_weekly,
+            coordinator.include_monthly,
+        )
+    ]
 
     async_add_entities(sensors)
     _LOGGER.info("Added %d degree days sensors", len(sensors))
@@ -94,7 +70,7 @@ class DegreeDegreeSensor(CoordinatorEntity, SensorEntity):
     def __init__(
         self,
         coordinator: HDDDataUpdateCoordinator,
-        entry: ConfigEntry,
+        entry: HDDConfigEntry,
         sensor_type: str,
     ) -> None:
         """Initialize the sensor."""

@@ -1,14 +1,15 @@
 """Config flow for Heating & Cooling Degree Days integration."""
 
 import logging
+import math
 from typing import Any
 
 import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.components.sensor import SensorDeviceClass
-from homeassistant.config_entries import ConfigEntry, ConfigFlowResult
-from homeassistant.const import CONF_NAME
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState, ConfigFlowResult
+from homeassistant.const import CONF_NAME, UnitOfTemperature
 from homeassistant.helpers import selector
 
 from .const import (
@@ -42,20 +43,18 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            # Validate the temperature sensor
-            if not self._validate_sensor(user_input[CONF_TEMPERATURE_SENSOR]):
-                errors["base"] = "invalid_temperature_sensor"
+            errors = self._validate_input(user_input)
 
             if not errors:
+                data = self._build_entry_data(user_input)
                 # Reject a strict duplicate: same source sensor + same base temperature
                 self._async_abort_entries_match(
                     {
                         CONF_TEMPERATURE_SENSOR: user_input[CONF_TEMPERATURE_SENSOR],
                         CONF_BASE_TEMPERATURE: user_input[CONF_BASE_TEMPERATURE],
+                        CONF_TEMPERATURE_UNIT: data[CONF_TEMPERATURE_UNIT],
                     }
                 )
-
-                data = self._build_entry_data(user_input)
 
                 # The name is only used as the entry title, not stored in data
                 name = user_input.get(CONF_NAME, "").strip()
@@ -68,6 +67,9 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=self._build_schema(),
+            description_placeholders={
+                "temperature_unit": self.hass.config.units.temperature_unit
+            },
             errors=errors,
         )
 
@@ -79,17 +81,17 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            if not self._validate_sensor(user_input[CONF_TEMPERATURE_SENSOR]):
-                errors["base"] = "invalid_temperature_sensor"
+            errors = self._validate_input(user_input)
+            data = self._build_entry_data(user_input, entry)
 
-            if not errors and self._is_duplicate(entry, user_input):
+            if not errors and self._is_duplicate(entry, data):
                 return self.async_abort(reason="already_configured")
 
             if not errors:
-                data = self._build_entry_data(user_input)
-
                 # An empty name falls back to a title derived from the new settings
                 name = user_input.get(CONF_NAME, "").strip()
+                if name == entry.title and name == self._derive_title(entry.data):
+                    name = ""
                 title = name or self._derive_title(data)
 
                 _LOGGER.debug(
@@ -101,15 +103,24 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if self._calculation_changed(entry, data):
                     await async_remove_stored_data(self.hass, entry.entry_id)
 
-                return self.async_update_reload_and_abort(
+                # The loaded entry's update listener owns the reload. Updating
+                # directly also supports HA 2025.1 (no async_update_and_abort).
+                self.hass.config_entries.async_update_entry(
                     entry,
                     title=title,
                     data=data,
                 )
+                if entry.state is not ConfigEntryState.LOADED:
+                    # Failed/unloaded entries have no active update listener.
+                    self.hass.config_entries.async_schedule_reload(entry.entry_id)
+                return self.async_abort(reason="reconfigure_successful")
 
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=self._build_schema(entry),
+            description_placeholders={
+                "temperature_unit": entry.data[CONF_TEMPERATURE_UNIT]
+            },
             errors=errors,
         )
 
@@ -129,7 +140,6 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(
                         domain=["sensor"],
-                        device_class=SensorDeviceClass.TEMPERATURE,
                     ),
                 ),
                 vol.Required(
@@ -153,11 +163,17 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
 
-    def _build_entry_data(self, user_input: dict[str, Any]) -> dict[str, Any]:
+    def _build_entry_data(
+        self, user_input: dict[str, Any], entry: ConfigEntry | None = None
+    ) -> dict[str, Any]:
         """Turn the submitted form into entry data (the name is not part of it)."""
         data = {k: v for k, v in user_input.items() if k != CONF_NAME}
-        # The base temperature is entered in the unit currently displayed by HA
-        data[CONF_TEMPERATURE_UNIT] = self.hass.config.units.temperature_unit
+        # Reconfiguration always displays and preserves the entry's stored unit.
+        data[CONF_TEMPERATURE_UNIT] = (
+            entry.data[CONF_TEMPERATURE_UNIT]
+            if entry
+            else self.hass.config.units.temperature_unit
+        )
         return data
 
     def _is_duplicate(self, entry: ConfigEntry, user_input: dict[str, Any]) -> bool:
@@ -168,6 +184,8 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             == user_input[CONF_TEMPERATURE_SENSOR]
             and other.data.get(CONF_BASE_TEMPERATURE)
             == user_input[CONF_BASE_TEMPERATURE]
+            and other.data.get(CONF_TEMPERATURE_UNIT)
+            == user_input[CONF_TEMPERATURE_UNIT]
             for other in self.hass.config_entries.async_entries(DOMAIN)
         )
 
@@ -201,20 +219,23 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self.hass.config.units.temperature_unit, DEFAULT_BASE_TEMPERATURE_CELSIUS
         )
 
-    def _validate_sensor(self, entity_id):
-        """Validate the temperature sensor entity exists."""
+    def _validate_input(self, user_input: dict[str, Any]) -> dict[str, str]:
+        """Validate calculation settings independently of selector filtering."""
+        errors = {}
+        if not self._validate_sensor(user_input[CONF_TEMPERATURE_SENSOR]):
+            errors["base"] = "invalid_temperature_sensor"
+        if not math.isfinite(user_input[CONF_BASE_TEMPERATURE]):
+            errors[CONF_BASE_TEMPERATURE] = "invalid_base_temperature"
+        return errors
+
+    def _validate_sensor(self, entity_id: str) -> bool:
+        """Require an existing sensor with a temperature class or unit."""
         state = self.hass.states.get(entity_id)
-        if not state:
+        if not state or state.domain != "sensor":
             return False
 
-        # Check that it is a temperature sensor
-        if state.attributes.get(
+        return state.attributes.get(
             "device_class"
-        ) != SensorDeviceClass.TEMPERATURE and not entity_id.startswith("weather."):
-            _LOGGER.warning(
-                "Entity %s does not appear to be a temperature sensor (device_class=%s)",
-                entity_id,
-                state.attributes.get("device_class"),
-            )
-
-        return True
+        ) == SensorDeviceClass.TEMPERATURE or state.attributes.get(
+            "unit_of_measurement"
+        ) in set(UnitOfTemperature)

@@ -47,3 +47,24 @@ SENSOR_TYPE_CDD_MONTHLY = "cdd_monthly"
 ATTR_BASE_TEMPERATURE = "base_temperature"
 ATTR_DATE_RANGE = "date_range"
 ATTR_MEAN_TEMPERATURE = "mean_temperature"
+
+
+def get_enabled_sensor_types(
+    include_cooling: bool, include_weekly: bool, include_monthly: bool
+) -> tuple[str, ...]:
+    """Return the historical sensor types enabled for an entry, in display order."""
+    types = [SENSOR_TYPE_HDD_DAILY]
+    if include_weekly:
+        types.append(SENSOR_TYPE_HDD_WEEKLY)
+    if include_monthly:
+        types.append(SENSOR_TYPE_HDD_MONTHLY)
+    if include_cooling:
+        types.append(SENSOR_TYPE_CDD_DAILY)
+        if include_weekly:
+            types.append(SENSOR_TYPE_CDD_WEEKLY)
+        if include_monthly:
+            types.append(SENSOR_TYPE_CDD_MONTHLY)
+    return tuple(types)
+
+
+HISTORICAL_SENSOR_TYPES = frozenset(get_enabled_sensor_types(True, True, True))

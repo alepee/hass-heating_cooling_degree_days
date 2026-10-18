@@ -184,7 +184,7 @@ async def test_stored_values_kept_when_settings_match(
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
     assert coordinator.daily_hdd_values[date(2026, 9, 20)] == 4.2
 
 
@@ -201,5 +201,5 @@ async def test_stored_values_discarded_when_base_temperature_changed(
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
     assert date(2026, 9, 20) not in coordinator.daily_hdd_values
