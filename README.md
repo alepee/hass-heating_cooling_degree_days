@@ -47,11 +47,13 @@ This method provides more accurate results than simple daily averages, especiall
 
 ### Manual Installation
 
-1. Download the latest release from the [releases page](https://github.com/alepee/hass-heating_cooling_degree_days/releases)
-2. Extract the `heating_cooling_degree_days` folder from the `custom_components` directory in the downloaded archive
-3. Copy the `heating_cooling_degree_days` folder to your Home Assistant's `custom_components` directory
-   - If the `custom_components` directory doesn't exist, create it in your Home Assistant config directory
+1. Download the attached `heating_cooling_degree_days.zip` asset from the [releases page](https://github.com/alepee/hass-heating_cooling_degree_days/releases)
+2. Create `custom_components/heating_cooling_degree_days/` in your Home Assistant configuration directory if needed
+3. Extract the ZIP contents into that directory. The archive is flat: `manifest.json` must end up at `custom_components/heating_cooling_degree_days/manifest.json`
 4. Restart Home Assistant
+
+If you download GitHub's source archive instead, copy its
+`custom_components/heating_cooling_degree_days/` directory into your configuration.
 
 ## Configuration
 
@@ -161,6 +163,8 @@ Python versions. To refresh the harness deliberately, run
 `uv lock --upgrade-package pytest-homeassistant-custom-component`, review the
 Python-specific resolutions, and run all CI rows. Keep the explicit HA floor pin
 until the minimum supported version is deliberately changed.
+
+Maintainers: follow the [manual release checklist and template](docs/development/release.md).
 
 ## Changelog
 
