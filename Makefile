@@ -43,7 +43,7 @@ test: ## Run all tests
 
 .PHONY: test-fast
 test-fast: ## Run pure calculation tests only (no hass fixture)
-	uv run pytest tests/test_calculations.py
+	uv run --locked pytest tests/unit
 
 .PHONY: test-verbose
 test-verbose: ## Run all tests with verbose output

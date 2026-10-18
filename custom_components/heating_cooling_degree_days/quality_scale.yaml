@@ -101,8 +101,8 @@ rules:
     status: done
     comment: sensor.py groups each entry under a service DeviceInfo with a stable identifier and entry title; tested in test_sensor.py.
   diagnostics:
-    status: todo
-    comment: The independent feat/diagnostics branch must merge before this can be marked done.
+    status: done
+    comment: diagnostics.py exports redacted settings, source availability, ledger coverage and period snapshots; covered by tests/test_diagnostics.py.
   discovery:
     status: exempt
     comment: Users choose an existing HA temperature sensor and calculation base; there is no physical device or service to discover.
