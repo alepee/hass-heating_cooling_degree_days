@@ -215,10 +215,15 @@ async def test_unload_preserves_storage_remove_deletes_only_own_storage(
     entries = []
     for base_temp in (18.0, 16.0):
         entry = _add_entry(hass, base_temperature=base_temp)
+        key = f"{DOMAIN}_data_{entry.entry_id}"
+        hass_storage[key] = {
+            "version": 1,
+            "minor_version": 1,
+            "key": key,
+            "data": {"daily_hdd_values": {"2026-10-01": 2.0}},
+        }
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
-        entry.runtime_data.daily_hdd_values[date(2026, 10, 1)] = 2.0
-        await entry.runtime_data.async_save_data()
         entries.append(entry)
 
     removed, kept = entries
