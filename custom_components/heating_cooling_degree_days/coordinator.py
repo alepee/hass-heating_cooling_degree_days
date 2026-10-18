@@ -92,6 +92,7 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
         self.include_monthly = include_monthly
         self.ledger: dict[date, DailyRecord] = {}
         self.period_attributes: dict[str, dict] = {}
+        self.last_refresh_time: datetime | None = None
         self.day_result: DayResult | None = None
         self.temperature_history: TemperatureHistory | None = None
         self._store = DailyLedgerStore(
@@ -187,6 +188,8 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
 
     async def _async_update_data(self) -> dict[str, float | None]:
         """Backfill bounded history, then atomically publish values and their labels."""
+        # Timestamp the attempt even if a recorder read or storage write fails.
+        self.last_refresh_time = dt_util.utcnow()
         now = dt_util.now()
         periods = calendar_periods(now.date())
         if not self.include_weekly:
