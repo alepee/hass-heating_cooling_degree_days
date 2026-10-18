@@ -13,12 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Calculate a time-weighted daily mean and expose daily coverage and partial status. Use elapsed seconds on daylight-saving days and round only when displaying sensor values.
 
 ### Added
-- Reconfigure flow: the temperature source, base temperature and cooling/weekly/monthly options of an existing entry can be changed from the integration page, prefilled with the current settings (#125)
+- Reconfigure flow: the temperature source, base temperature and cooling/weekly/monthly options of an existing entry can be changed from the integration page, prefilled with the current settings (#126, fixes #125)
 
 ### Changed
-- Minimum Home Assistant version raised to 2024.11 (required by the reconfigure flow)
+- Minimum Home Assistant version raised to 2025.1, matching the tested support floor
 - Sensor types turned off in the configuration now have their entities removed instead of being left behind as unavailable
 - Stored daily values carry the settings they were calculated with, and are reset when the temperature source, the base temperature or the unit changes
+- Local uv development replaces the obsolete devcontainer (#127); Home Assistant development overrides now survive `make ha-run`
+- Ruff updated to 0.16.6 (#128), CI actions updated (#111, #113, #118), and Dependabot uses native uv support with grouped tooling updates (#129)
+- CI verifies the actual Python and Home Assistant versions for the minimum, locked and latest-harness environments; pytest dependencies follow the harness, whose updates are managed separately from Dependabot
+- Releases use a manual checklist and English notes; version bumps refresh the lockfile, and release assets require matching tag/manifest/project versions and cannot overwrite existing assets
 
 ## [1.1.0] - 2026-06-09
 

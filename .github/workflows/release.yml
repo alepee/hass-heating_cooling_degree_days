@@ -8,14 +8,39 @@ jobs:
   release_zip_file:
     name: Prepare release asset
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: '3.x'
+          python-version: '3.13'
+
+      - name: Verify release version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import tomllib
+          from pathlib import Path
+
+          manifest = json.loads(Path("custom_components/heating_cooling_degree_days/manifest.json").read_text())
+          project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
+          tag = os.environ["RELEASE_TAG"]
+          version = manifest["version"]
+          if tag != f"v{version}" or project["version"] != version:
+              raise SystemExit(
+                  f"Version mismatch: tag={tag}, manifest={version}, project={project['version']}"
+              )
+          print(f"Verified release {tag}")
+          PY
 
       # Pack the heating_cooling_degree_days dir as a zip and upload to the release
       - name: ZIP heating_cooling_degree_days Dir
@@ -29,4 +54,4 @@ jobs:
           file: ${{ github.workspace }}/custom_components/heating_cooling_degree_days/heating_cooling_degree_days.zip
           asset_name: heating_cooling_degree_days.zip
           tag: ${{ github.ref }}
-          overwrite: true
+          overwrite: false
