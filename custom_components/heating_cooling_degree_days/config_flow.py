@@ -10,7 +10,7 @@ from homeassistant import config_entries
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState, ConfigFlowResult
 from homeassistant.const import CONF_NAME, UnitOfTemperature
-from homeassistant.helpers import selector
+from homeassistant.helpers import entity_registry as er, selector
 from homeassistant.helpers.translation import async_get_translations
 
 from .const import (
@@ -30,6 +30,7 @@ from .const import (
     MAP_DEFAULT_BASE_TEMPERATURE,
 )
 from .coordinator import async_remove_stored_data
+from .source import CONF_SOURCE_REGISTRY_ID, async_clear_source_issue
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -106,6 +107,8 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if self._calculation_changed(entry, data):
                     await async_remove_stored_data(self.hass, entry.entry_id)
 
+                async_clear_source_issue(self.hass, entry.entry_id)
+
                 # The loaded entry's update listener owns the reload. Updating
                 # directly also supports HA 2025.1 (no async_update_and_abort).
                 self.hass.config_entries.async_update_entry(
@@ -177,6 +180,10 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if entry
             else self.hass.config.units.temperature_unit
         )
+        if registered := er.async_get(self.hass).async_get(
+            data[CONF_TEMPERATURE_SENSOR]
+        ):
+            data[CONF_SOURCE_REGISTRY_ID] = registered.id
         return data
 
     def _is_duplicate(self, entry: ConfigEntry, user_input: dict[str, Any]) -> bool:
@@ -195,13 +202,14 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     def _calculation_changed(entry: ConfigEntry, data: dict[str, Any]) -> bool:
         """Check whether the new settings invalidate the stored daily values."""
+        source_key = (
+            CONF_SOURCE_REGISTRY_ID
+            if entry.data.get(CONF_SOURCE_REGISTRY_ID)
+            else CONF_TEMPERATURE_SENSOR
+        )
         return any(
             entry.data.get(key) != data.get(key)
-            for key in (
-                CONF_TEMPERATURE_SENSOR,
-                CONF_BASE_TEMPERATURE,
-                CONF_TEMPERATURE_UNIT,
-            )
+            for key in (source_key, CONF_BASE_TEMPERATURE, CONF_TEMPERATURE_UNIT)
         )
 
     async def _async_derive_title(

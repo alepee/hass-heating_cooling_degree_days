@@ -26,6 +26,7 @@ from .periods import (
     day_seconds,
     day_window,
 )
+from .source import CONF_SOURCE_REGISTRY_ID, SourceTracker
 
 _LOGGER = logging.getLogger(__name__)
 STORAGE_VERSION = 2
@@ -77,12 +78,15 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
         temperature_unit: str,
         entry_id: str,
         *,
+        source: SourceTracker | None = None,
         include_cooling: bool = False,
         include_weekly: bool = True,
         include_monthly: bool = True,
     ):
         """Initialize per-entry storage and calculation settings."""
         super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL)
+        self.source = source
+        self.source_missing = False
         self.temp_entity = temp_entity
         self.base_temp = base_temp
         self.temperature_unit = temperature_unit
@@ -119,8 +123,13 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
 
     def _config_fingerprint(self) -> dict:
         """Identify the source/base/unit shared by every record in this ledger."""
+        identity = (
+            {CONF_SOURCE_REGISTRY_ID: self.source.registry_id}
+            if self.source and self.source.registry_id
+            else {CONF_TEMPERATURE_SENSOR: self.temp_entity}
+        )
         return {
-            CONF_TEMPERATURE_SENSOR: self.temp_entity,
+            **identity,
             CONF_BASE_TEMPERATURE: self.base_temp,
             CONF_TEMPERATURE_UNIT: self.temperature_unit,
         }
@@ -130,7 +139,18 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
         stored = await self._store.async_load()
         if not stored:
             return
-        if stored.get("config") not in (None, self._config_fingerprint()):
+        legacy_fingerprint = {
+            CONF_TEMPERATURE_SENSOR: (
+                self.source.previous_entity_id if self.source else self.temp_entity
+            ),
+            CONF_BASE_TEMPERATURE: self.base_temp,
+            CONF_TEMPERATURE_UNIT: self.temperature_unit,
+        }
+        if stored.get("config") not in (
+            None,
+            self._config_fingerprint(),
+            legacy_fingerprint,
+        ):
             _LOGGER.info("Calculation settings changed: rebuilding the daily ledger")
             self.ledger = {}
             await self._save_ledger(self.ledger)
@@ -139,7 +159,7 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
             date.fromisoformat(day): DailyRecord(**record)
             for day, record in stored.get("days", {}).items()
         }
-        if stored.get("config") is None:
+        if stored.get("config") != self._config_fingerprint():
             await self._save_ledger(self.ledger)
 
     async def _save_ledger(self, ledger: dict[date, DailyRecord]) -> None:
@@ -209,7 +229,13 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
             == str(yesterday)
             else None
         )
-        for day in self._backfill_dates(needed, now):
+        self.source_missing = (
+            self.source is not None and not self.source.async_available()
+        )
+        # A removed source can leave an old numeric recorder state behind. Do not
+        # extrapolate it into newly completed days while the source is missing.
+        dates = [] if self.source_missing else self._backfill_dates(needed, now)
+        for day in dates:
             start, end = day_window(day, now.tzinfo)
             history = await get_temperature_history(
                 self.hass,
@@ -244,6 +270,7 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
                 values[key], attributes[key] = aggregate_period(
                     ledger, period, metric, now.tzinfo
                 )
+                attributes[key]["source_missing"] = self.source_missing
                 if (
                     name == "daily"
                     and (record := ledger.get(yesterday))

@@ -38,6 +38,7 @@ def diagnostic_entry(hass):
         title="Private garden at Alice's home",
         data={
             "temperature_sensor": "sensor.alice_private_garden",
+            "temperature_sensor_registry_id": "private-registry-identity",
             "base_temperature": 18,
             "temperature_unit": "°C",
             "include_cooling": True,
@@ -78,6 +79,7 @@ async def test_redacted_bounded_summary_does_not_read_history(hass, diagnostic_e
     for secret in (
         entry.title,
         entry.data["temperature_sensor"],
+        entry.data["temperature_sensor_registry_id"],
         "sensor.bobs_private_room",
         "Bob",
         "Secret address",

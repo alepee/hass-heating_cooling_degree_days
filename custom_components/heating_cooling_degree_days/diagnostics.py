@@ -32,8 +32,16 @@ from .const import (
     get_enabled_sensor_types,
 )
 from .coordinator import STORAGE_VERSION
+from .source import CONF_SOURCE_REGISTRY_ID
 
-TO_REDACT = {CONF_TEMPERATURE_SENSOR, "entity_id", "unique_id", "name", "title"}
+TO_REDACT = {
+    CONF_TEMPERATURE_SENSOR,
+    CONF_SOURCE_REGISTRY_ID,
+    "entity_id",
+    "unique_id",
+    "name",
+    "title",
+}
 LEDGER_DAYS = 35
 
 
