@@ -1,0 +1,173 @@
+# Maintainer self-assessment, not an official Home Assistant quality tier.
+# Rule inventory: https://contributors.home-assistant.io/core/quality-scale/rules/
+# Reassess evidence when behavior or the upstream rules change.
+rules:
+  # Bronze
+  action-setup:
+    status: exempt
+    comment: No integration or entity actions are registered.
+  appropriate-polling:
+    status: done
+    comment: const.SCAN_INTERVAL is five minutes; __init__.py also schedules local midnight. Backfill queries are bounded.
+  brands:
+    status: todo
+    comment: Local icon/logo assets exist, but upstream home-assistant/brands acceptance has not been verified; HACS CI still ignores brands.
+  common-modules:
+    status: done
+    comment: coordinator.py owns shared fetching/storage. One sensor class uses CoordinatorEntity directly; no shared custom entity base is needed.
+  config-flow:
+    status: done
+    comment: config_flow.py provides user/reconfigure forms, selectors and translated field descriptions; settings are entry data.
+  config-flow-test-coverage:
+    status: done
+    comment: tests/test_config_flow.py and test_entry_lifecycle.py cover setup/reconfigure/error paths; measured config_flow.py branch coverage is 100%.
+  dependency-transparency:
+    status: exempt
+    comment: manifest.json has no third-party runtime requirements; this calculated integration uses HA recorder and the standard library.
+  docs-actions:
+    status: exempt
+    comment: No integration actions to document.
+  docs-conditions:
+    status: exempt
+    comment: No integration-specific automation conditions.
+  docs-high-level-description:
+    status: done
+    comment: README introduction and What are Degree Days explain inputs and purpose.
+  docs-installation-instructions:
+    status: done
+    comment: README covers HACS, manual ZIP layout, UI setup and minimum HA version.
+  docs-removal-instructions:
+    status: todo
+    comment: Add user instructions for removing an entry and uninstalling the integration, explaining stored-ledger removal.
+  docs-triggers:
+    status: exempt
+    comment: No integration-specific automation triggers.
+  entity-event-setup:
+    status: done
+    comment: CoordinatorEntity owns entity subscriptions; entry listeners and the midnight timer use async_on_unload.
+  entity-unique-id:
+    status: done
+    comment: sensor.py uses entry_id plus sensor type; __init__.py migrates version-1 IDs without changing entity IDs.
+  has-entity-name:
+    status: done
+    comment: DegreeDegreeSensor sets _attr_has_entity_name and a translation key.
+  runtime-data:
+    status: done
+    comment: __init__.py defines HDDConfigEntry and assigns the coordinator to entry.runtime_data; sensor.py reads it.
+  test-before-configure:
+    status: done
+    comment: config_flow.py validates an existing temperature-class/unit sensor and finite base temperature; no external connection is involved.
+  test-before-setup:
+    status: done
+    comment: __init__.py awaits async_config_entry_first_refresh before platform setup and propagates failures; missing observations remain unknown.
+  unique-config-entry:
+    status: done
+    comment: Setup/reconfigure reject duplicate source/base/unit tuples; different calculation bases are intentionally allowed.
+
+  # Silver
+  action-exceptions:
+    status: exempt
+    comment: No actions can raise service errors.
+  config-entry-unloading:
+    status: done
+    comment: __init__.py unloads platforms; test_entry_lifecycle.py verifies rollback, reload, cancellation and per-entry removal.
+  docs-configuration-parameters:
+    status: todo
+    comment: README describes reconfiguration but lacks a complete field/default table, including optional name and units.
+  docs-installation-parameters:
+    status: todo
+    comment: README lists the main setup fields; document optional name and all defaults/accepted temperature-source requirements.
+  entity-unavailable:
+    status: done
+    comment: CoordinatorEntity marks refresh failures unavailable. No covered time produces an unknown value instead of zero; covered cached days remain usable.
+  integration-owner:
+    status: done
+    comment: manifest.json lists @alepee as codeowner.
+  log-when-unavailable:
+    status: done
+    comment: DataUpdateCoordinator logs refresh failure and recovery transitions; history.py raises UpdateFailed for recorder failures.
+  parallel-updates:
+    status: todo
+    comment: sensor.py does not yet declare PARALLEL_UPDATES explicitly, although its entities share a coordinator.
+  reauthentication-flow:
+    status: exempt
+    comment: No credentials or authenticated external API.
+  test-coverage:
+    status: todo
+    comment: Overall branch coverage is about 98%, but sensor.py is about 88%; the per-module requirement is not yet met.
+
+  # Gold
+  devices:
+    status: done
+    comment: sensor.py groups each entry under a service DeviceInfo with a stable identifier and entry title; tested in test_sensor.py.
+  diagnostics:
+    status: done
+    comment: diagnostics.py exports redacted settings, source availability, ledger coverage and period snapshots; covered by tests/test_diagnostics.py.
+  discovery:
+    status: exempt
+    comment: Users choose an existing HA temperature sensor and calculation base; there is no physical device or service to discover.
+  discovery-update-info:
+    status: exempt
+    comment: No network addresses or discovery payloads are stored.
+  docs-data-update:
+    status: done
+    comment: README Calculation Method covers polling, midnight refresh, backfill limits and partial retries.
+  docs-examples:
+    status: todo
+    comment: README lists use cases but does not include working automation YAML or blueprints.
+  docs-known-limitations:
+    status: done
+    comment: README explains recorder retention/exclusions, invalid readings, legacy coverage and historical-statistics limits.
+  docs-supported-devices:
+    status: exempt
+    comment: This calculated integration has no hardware compatibility list; source entity requirements belong in installation parameters.
+  docs-supported-functions:
+    status: done
+    comment: README Features, Sensors Created and Time Periods describe HDD/CDD entities and their attributes.
+  docs-troubleshooting:
+    status: todo
+    comment: Add a dedicated guide for missing source/history, gaps, reconfiguration and diagnostics collection.
+  docs-use-cases:
+    status: done
+    comment: README Example Usage describes comparing/normalizing energy consumption and evaluating building efficiency.
+  dynamic-devices:
+    status: exempt
+    comment: There is one explicitly configured service device per entry and no changing remote device inventory.
+  entity-category:
+    status: exempt
+    comment: All entities are primary calculation sensors; no diagnostic or configuration entities are exposed.
+  entity-device-class:
+    status: exempt
+    comment: HA has no degree-day sensor device class; temperature would misrepresent degree-times-duration units.
+  entity-disabled-by-default:
+    status: exempt
+    comment: Only primary HDD/CDD calculations are exposed; cooling and optional periods are explicitly selected in the config flow.
+  entity-translations:
+    status: done
+    comment: sensor.py sets translation keys; EN/FR entity names match via scripts/check_translations.py.
+  exception-translations:
+    status: todo
+    comment: Flow errors are translated, but recorder UpdateFailed messages in history.py are plain English.
+  icon-translations:
+    status: todo
+    comment: No icons.json defines entity icons; integration branding is separate.
+  reconfiguration-flow:
+    status: done
+    comment: config_flow.py provides async_step_reconfigure with validation, duplicate guards, stored-unit preservation and reload tests.
+  repair-issues:
+    status: todo
+    comment: Deleted/misconfigured sources do not yet create user-actionable repair issues.
+  stale-devices:
+    status: exempt
+    comment: No remote inventory can disappear; the single service device is tied to its config entry and removed with it.
+
+  # Platinum
+  async-dependency:
+    status: exempt
+    comment: No external client library; recorder work uses its executor and HA Store exposes async persistence.
+  inject-websession:
+    status: exempt
+    comment: The integration makes no HTTP requests and has no HTTP client dependency.
+  strict-typing:
+    status: todo
+    comment: Typed runtime_data and result records exist, but several functions remain untyped and CI does not run strict mypy.
