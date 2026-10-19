@@ -2163,7 +2163,7 @@ wheels = [
 
 [[package]]
 name = "hass-heating-cooling-degree-days"
-version = "1.2.0b1"
+version = "1.2.0b2"
 source = { virtual = "." }
 
 [package.dev-dependencies]

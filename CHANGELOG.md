@@ -7,8 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0-beta.2] - 2026-10-19
+
 ### Added
-- Integration icon and logo, shipped with the integration (`brand/`) and shown by Home Assistant 2026.3 or later
+- Renaming the temperature sensor is followed: the entry tracks the sensor's registry identity, keeps its stored daily values and entities, and waits for the recorder history migration (#146)
+- A per-entry Repairs notice when the source sensor is missing, cleared once it is back or reconfigured; missing days lower coverage instead of counting as zero (#146)
+- Diagnostics download with calculation settings, source availability, per-day coverage for the last 35 days and current period snapshots; identifying details are redacted (#143)
+- Integration icon and logo, shipped with the integration (`brand/`) and shown by Home Assistant 2026.3 or later (#141)
+- Contributor guide (`AGENTS.md`) and quality-scale checklist (#144)
+
+### Fixed
+- Generated entry titles follow Home Assistant's language (English, French); existing titles are not renamed (#142)
+- Nearby base temperatures (e.g. 18.01 and 18.04) produce distinct generated titles (#142)
 
 ## [1.2.0-beta.1] - 2026-10-19
 
