@@ -62,9 +62,7 @@ the stable release notes, not just the last beta's diff.
 1. Prepare English release notes using the template below. Use the title `vX.Y.Z`
    and link the compare view against the previous appropriate tag. Explain user
    behavior and upgrade requirements; omit empty or irrelevant sections.
-2. Check for an existing tag or draft. The old `v1.1.1` draft titled
-   `Example title` must be reviewed and replaced/retargeted manually before the
-   next release. Removing the drafter does not remove existing GitHub drafts.
+2. Check that no tag, draft or release already exists for this version.
 3. Verify the merged release commit SHA, then publish against that exact SHA:
 
    ```bash
@@ -93,35 +91,63 @@ new corrected version; do not move the tag or silently replace its archive.
 
 ## Release notes template
 
+Follow the same format as the maintainer's other integrations (see
+[hass-hitachi_yutaki releases](https://github.com/alepee/hass-hitachi_yutaki/releases)).
+Write in English, from the maintainer's point of view, user-facing first.
+Avoid the em dash; use a colon in the title. Link every item to its issue or PR.
+Omit sections that have nothing to say.
+
 ```markdown
 # Heating & Cooling Degree Days vX.Y.Z: <short theme>
 
-<One or two sentences describing the user-visible result. Link relevant issues.>
+[![Downloads for this release](https://img.shields.io/github/downloads/alepee/hass-heating_cooling_degree_days/vX.Y.Z/total.svg)](https://github.com/alepee/hass-heating_cooling_degree_days/releases/tag/vX.Y.Z)
 
-## Highlights
+<Intro paragraph: what changed for users and why. For a beta: "The Nth **X.Y.Z pre-release**.">
 
-- <Feature or fix and its observable effect.>
+> 🧪 **This is a pre-release for validation.** <What to back up or check.>
+<or, for a stable release with required action:>
+> ⚠️ **<Who is affected>:** <one-line warning, link to the upgrade note>
 
-## Upgrade notes
+## 🎯 Highlights
 
-<Minimum supported Home Assistant version. Explain any required user action,
-stored-value reset, entity change or statistics change. Remove this section
-only when there is nothing relevant to communicate.>
+- **<Short title>**: <observable effect> ([#N](https://github.com/alepee/hass-heating_cooling_degree_days/pull/N))
 
-## Installation
+## ✨ What's New
 
-1. Update to vX.Y.Z through HACS.
-2. Restart Home Assistant.
+### <Feature> ([#N](...))
 
-For manual installation, extract the attached heating_cooling_degree_days.zip
-into custom_components/heating_cooling_degree_days/.
+<Explanation, how to use it.>
 
-<For a beta, explain how to opt in and which behavior needs testing.>
+## 🐛 Bug Fixes
 
-## Bug reports
+- **<Symptom>**: <cause and fix> ([#N](...))
 
-Include the integration and Home Assistant versions, temperature sensor and
-units, affected dates, and relevant logs.
+## ⚠️ Upgrade notes
 
-**Full changelog:** [vPREV...vX.Y.Z](https://github.com/alepee/hass-heating_cooling_degree_days/compare/vPREV...vX.Y.Z)
+- <Minimum HA version, required actions, entity/statistics/storage changes.>
+
+## 🔧 Under the Hood
+
+- **<Area>**: <technical change> ([#N](...))
+
+## 📦 Installation
+
+1. Update to `vX.Y.Z` via HACS
+2. Restart Home Assistant
+
+<For a beta, title the section "📦 Installation (pre-release via HACS)":>
+1. In HACS, open **Heating & Cooling Degree Days** → ⋮ menu → **Redownload**, and enable **"Show beta versions"**
+2. Select **`X.Y.Z-beta.N`** and **restart Home Assistant**
+
+## 🐛 Bug Reports
+
+If you hit an issue, please include:
+- Home Assistant version and time zone
+- Temperature sensor and its unit, base temperature
+- Affected dates, observed values and the `coverage` / `partial` attributes
+- Relevant logs (`custom_components.heating_cooling_degree_days`), or the diagnostics download from the integration page
+
+---
+
+**Full Changelog:** [vPREV...vX.Y.Z](https://github.com/alepee/hass-heating_cooling_degree_days/compare/vPREV...vX.Y.Z)
 ```
