@@ -5,6 +5,9 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pytest
+from pytest_homeassistant_custom_component.components.recorder.common import (
+    async_wait_recording_done,
+)
 
 from custom_components.heating_cooling_degree_days.degree_days import (
     integrate_degree_days,
@@ -24,13 +27,11 @@ async def test_recorder_start_state_and_end_exclusion(recorder_mock, hass, freez
     """An actual recorder start-state covers the whole day, excluding end changes."""
     freezer.move_to(START - timedelta(hours=1))
     hass.states.async_set(ENTITY, "10", {"unit_of_measurement": "°C"})
-    await hass.async_block_till_done()
-    await recorder_mock.async_block_till_done()
+    await async_wait_recording_done(hass)
 
     freezer.move_to(END)
     hass.states.async_set(ENTITY, "30", {"unit_of_measurement": "°C"})
-    await hass.async_block_till_done()
-    await recorder_mock.async_block_till_done()
+    await async_wait_recording_done(hass)
 
     history = await get_temperature_history(hass, START, END, ENTITY, "°C")
     assert (
@@ -51,8 +52,7 @@ async def test_recorder_keeps_attribute_only_unit_changes(recorder_mock, hass, f
     ]:
         freezer.move_to(when)
         hass.states.async_set(ENTITY, "50", {"unit_of_measurement": unit})
-        await hass.async_block_till_done()
-        await recorder_mock.async_block_till_done()
+        await async_wait_recording_done(hass)
     freezer.move_to(END)
 
     history = await get_temperature_history(hass, START, END, ENTITY, "°C")
@@ -91,8 +91,8 @@ async def test_recorder_context_bridges_midnight_gaps(
     ]:
         freezer.move_to(when)
         hass.states.async_set(ENTITY, value, {"unit_of_measurement": "°C"})
-        await hass.async_block_till_done()
-        await recorder_mock.async_block_till_done()
+        # Drain the recorder worker too: an empty queue may hide an in-flight write.
+        await async_wait_recording_done(hass)
     history = await get_temperature_history(hass, START, END, ENTITY, "°C")
     result = integrate_degree_days(history.samples, START, END, 18)
     assert result.coverage_seconds == 86400
@@ -111,8 +111,7 @@ async def test_recorder_open_end_gap_stays_partial_until_recovery(
     ]:
         freezer.move_to(when)
         hass.states.async_set(ENTITY, value, {"unit_of_measurement": "°C"})
-        await hass.async_block_till_done()
-        await recorder_mock.async_block_till_done()
+        await async_wait_recording_done(hass)
     freezer.move_to(END)
     history = await get_temperature_history(hass, START, END, ENTITY, "°C")
     result = integrate_degree_days(history.samples, START, END, 18)
