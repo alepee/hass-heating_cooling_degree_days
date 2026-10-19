@@ -35,8 +35,8 @@ class DailyRecord:
 
     @property
     def complete(self) -> bool:
-        """Finalized days, including flagged legacy values, need no new query."""
-        return self.legacy or self.coverage_seconds == self.window_seconds
+        """Only measured full days are final; legacy values can be corrected once."""
+        return not self.legacy and self.coverage_seconds == self.window_seconds
 
 
 def day_window(day: date, zone: tzinfo) -> tuple[datetime, datetime]:

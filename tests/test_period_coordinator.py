@@ -21,6 +21,7 @@ from custom_components.heating_cooling_degree_days.coordinator import (
 )
 from custom_components.heating_cooling_degree_days.degree_days import TemperatureSample
 from custom_components.heating_cooling_degree_days.history import TemperatureHistory
+from custom_components.heating_cooling_degree_days.periods import DailyRecord
 from custom_components.heating_cooling_degree_days.sensor import DegreeDegreeSensor
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.sensor import SensorStateClass
@@ -164,7 +165,7 @@ async def test_failure_during_backfill_keeps_previous_values_and_labels(hass, fr
 async def test_scalar_store_migration_preserves_values_and_flags_unknown_coverage(
     hass, hass_storage, legacy_key
 ):
-    """Both v1 formats migrate through HA Store and are never silently recalculated."""
+    """Both v1 formats retain their legacy values when recorder has no coverage."""
     coordinator = make_coordinator(hass, include_cooling=True)
     key = f"{STORAGE_KEY}_test-entry"
     hass_storage[key] = {
@@ -177,9 +178,9 @@ async def test_scalar_store_migration_preserves_values_and_flags_unknown_coverag
         },
     }
     await coordinator.async_load_stored_data()
-    with patch(HISTORY) as history:
+    with patch(HISTORY, return_value=TemperatureHistory((), None, 0)) as history:
         await coordinator.async_refresh()
-    history.assert_not_called()
+    assert history.await_count == 2
     assert coordinator.data["hdd_monthly"] == 9.2345
     assert coordinator.period_attributes["hdd_monthly"]["coverage"] == 1
     assert coordinator.period_attributes["hdd_monthly"]["legacy_days"] == 2
@@ -334,3 +335,102 @@ async def test_failed_save_does_not_publish_unsaved_totals(hass):
     assert coordinator.ledger == {}
     assert coordinator.period_attributes == {}
     assert coordinator.data is None
+
+
+@pytest.mark.freeze_time("2026-06-21 12:00:00+00:00")
+async def test_legacy_full_days_correct_once_in_bounded_batches_and_survive_restart(
+    hass,
+):
+    """Full recorder days replace inflated legacy totals once, across restarts."""
+    coordinator = make_coordinator(hass, include_cooling=True)
+    coordinator.ledger = {
+        date(2026, 6, day): DailyRecord(12, 3, None, 86400, None, legacy=True)
+        for day in range(1, 21)
+    }
+    await coordinator._save_ledger(coordinator.ledger)
+    with patch(HISTORY, side_effect=full_day) as history:
+        await coordinator.async_refresh()
+        assert history.await_count == MAX_BACKFILL_DAYS
+        assert coordinator.data["hdd_monthly"] == 13 * 12 + 7 * 8
+        assert coordinator.data["cdd_monthly"] == 13 * 3
+        assert coordinator.period_attributes["hdd_monthly"]["legacy_days"] == 13
+        assert coordinator.ledger[date(2026, 6, 20)].mean_temp == 10
+        resumed = make_coordinator(hass, include_cooling=True)
+        await resumed.async_load_stored_data()
+        await resumed.async_refresh()
+        assert history.await_count == 14
+        await resumed.async_refresh()
+        assert history.await_count == 20
+        assert resumed.data["hdd_monthly"] == 160
+        assert resumed.data["cdd_monthly"] == 0
+        assert resumed.period_attributes["hdd_monthly"]["legacy_days"] == 0
+        assert all(
+            record.complete and not record.legacy for record in resumed.ledger.values()
+        )
+        await resumed.async_refresh()
+        assert history.await_count == 20
+        assert len({call.args[1].date() for call in history.await_args_list}) == 20
+
+
+@pytest.mark.freeze_time("2026-06-03 00:01:00+00:00")
+@pytest.mark.parametrize(
+    "samples", [(), (TemperatureSample(datetime(2026, 6, 2, 12, tzinfo=UTC), 10),)]
+)
+async def test_legacy_partial_or_empty_history_retains_value_until_full_day(
+    hass, freezer, samples
+):
+    """Incomplete history never replaces legacy totals; full history can correct downward."""
+    coordinator = make_coordinator(
+        hass, include_cooling=True, include_weekly=False, include_monthly=False
+    )
+    day = date(2026, 6, 2)
+    coordinator.ledger[day] = DailyRecord(12, 3, None, 86400, None, legacy=True)
+    with patch(HISTORY, return_value=TemperatureHistory(samples, None, 0)) as history:
+        await coordinator.async_refresh()
+        await coordinator.async_refresh()
+        assert history.await_count == 1
+        assert coordinator.ledger[day].legacy
+        assert coordinator.data["hdd_daily"] == 12
+        assert coordinator.data["cdd_daily"] == 3
+        assert coordinator.ledger[day].coverage_seconds is None
+    freezer.move_to("2026-06-03 06:01:00+00:00")
+    with patch(HISTORY, side_effect=full_day) as history:
+        await coordinator.async_refresh()
+        await coordinator.async_refresh()
+        assert history.await_count == 1
+    assert coordinator.data["hdd_daily"] == 8
+    assert coordinator.data["cdd_daily"] == 0
+    assert coordinator.ledger[day].coverage_seconds == 86400
+    assert not coordinator.ledger[day].legacy
+
+
+@pytest.mark.freeze_time("2026-06-04 12:00:00+00:00")
+async def test_legacy_probes_actual_history_once_outside_retention(hass, freezer):
+    """Nominal retention does not discard recoverable legacy days or retry purged ones."""
+    coordinator = make_coordinator(hass)
+    recorder = get_instance(hass)
+    recorder.auto_purge = True
+    recorder.keep_days = 1
+    coordinator.ledger = {
+        date(2026, 6, day): DailyRecord(12, None, None, 86400, None, legacy=True)
+        for day in (1, 2, 3)
+    }
+
+    async def retained(_hass, start, end, entity, unit):
+        if start.day == 1:
+            return TemperatureHistory((), None, 0)
+        return await full_day(_hass, start, end, entity, unit)
+
+    with patch(HISTORY, side_effect=retained) as history:
+        await coordinator.async_refresh()
+        assert history.await_count == 3
+        assert coordinator.data["hdd_monthly"] == 28
+        assert coordinator.ledger[date(2026, 6, 1)].legacy
+        assert not coordinator.ledger[date(2026, 6, 2)].legacy
+        freezer.move_to("2026-06-05 12:00:00+00:00")
+        resumed = make_coordinator(hass)
+        recorder.auto_purge = True
+        recorder.keep_days = 1
+        await resumed.async_load_stored_data()
+        await resumed.async_refresh()
+        assert history.await_count == 4  # Only the newly completed June 4 is queried.

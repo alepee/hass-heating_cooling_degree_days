@@ -60,3 +60,26 @@ start-state must not be extrapolated across newly completed days. Cached records
 remain usable, calendar aggregation continues, and missing dates reduce coverage.
 This also delays backfill of legitimate older observations until restoration.
 Normal backfill bounds, recorder retention and partial retry rules still apply.
+
+
+Source status is live metadata: state/registry changes and every coordinator
+refresh reconcile `source_missing` and publish it immediately, even while a
+backfill refresh is debounced or the last recorder read failed. Publishing the
+flag does not clear recorder errors or change the value/coverage snapshot.
+
+## Legacy recalculation
+
+Legacy scalar records are not finalized measurements. Bounded backfill replaces
+a legacy record only when recorder covers the entire local day; the replacement
+clears `legacy` and is cached permanently. Unlike ordinary partial-day retries,
+this one-time correction may reduce HDD or CDD. Corrections apply immediately,
+so current-period totals become accurate without waiting for a calendar boundary.
+CHANGELOG documents the possible `total_increasing` statistics reset.
+
+Partial/empty reads retain all old values and unknown coverage. They use the
+normal six-hour retry delay while retained. Legacy dates outside nominal recorder
+retention get one initial probe, because older history may still exist before a
+purge or after a retention-policy change. They are not retried outside retention
+after a successful probe without full coverage. Recorder/storage failures retain
+the old ledger and remain retryable. No persistent schema change is required:
+existing `legacy` and `last_attempt` fields record the correction/probe status.

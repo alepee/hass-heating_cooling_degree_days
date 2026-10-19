@@ -187,7 +187,7 @@ async def test_unknown_legacy_coverage_and_last_attempt(hass, diagnostic_entry):
     record = data["ledger"]["days"][str(day)]
     assert record["coverage"] is None
     assert record["coverage_seconds"] is None
-    assert record["legacy"] and record["complete"]
+    assert record["legacy"] and not record["complete"]
     assert record["last_attempt"] == attempted.isoformat()
 
 

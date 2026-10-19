@@ -55,8 +55,11 @@ coverage are cached; partial/empty days are retried every six hours while within
 recorder retention. Retries that reduce coverage or either cached integral keep
 the previous observation to avoid artificial statistics resets. The ledger keeps
 60 days. Coverage can remain partial if recorder has purged or never recorded
-the source. Legacy daily totals are preserved with coverage assumed complete,
-flagged by `legacy_days`; absent legacy cooling values remain unknown.
+the source. Legacy daily totals are flagged by `legacy_days`, with coverage
+assumed complete until Recorder provides a fully observed day to replace them.
+Each legacy day is corrected once, within the seven-date refresh limit. Partial
+or missing history retains the old value. A correction may lower current-period
+totals and be interpreted as a statistics reset; see CHANGELOG before upgrading.
 
 Renaming a registered temperature sensor automatically updates this integration
 and preserves its calculated history. Source checks wait until Home Assistant
@@ -64,7 +67,8 @@ has finished starting. A registered sensor that has not published a state yet
 does not trigger a repair. If the source disappears from the registry, a Repairs
 notice links to the integration: use the entry’s three-dot menu > Reconfigure to select
 a replacement. While the source is missing, `source_missing` is true, backfill
-is paused, and existing ledger values remain available. Newly missing days have
+is paused, and existing ledger values remain available. The flag updates as soon
+as the source returns, independently of historical recalculation. Newly missing days have
 unknown values and reduce coverage; they are not counted as zero. Restoring the
 source clears the notice and resumes backfill. Selecting a different source
 starts a new ledger.
