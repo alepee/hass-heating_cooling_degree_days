@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Daily sensors use the `measurement` state class again, so their long-term statistics continue and the "entity no longer has a state class" repair raised by earlier 1.2.0 betas disappears. Weekly/monthly sensors keep `total_increasing`
+
 ## [1.2.0-beta.4] - 2026-10-19
 
 ### Fixed

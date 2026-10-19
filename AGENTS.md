@@ -39,7 +39,8 @@ Register listeners and timers with their lifecycle owner, including
   partial status and missing days. A failure must never become a healthy zero.
   A calculation revision allows one immediate retry of older partial/legacy
   records; persist the attempt revision even if coverage cannot improve.
-- Weekly/monthly use `total_increasing`; daily has no state class. Explain
+- Weekly/monthly use `total_increasing`; daily uses `measurement` (keeps long-term
+  statistics of a value that changes once per day). Explain
   statistics and migration changes in CHANGELOG; do not rewrite HA history silently.
 - Minimum supported Home Assistant: **2025.1**. Stable 1.2.0 requires all planned
   calculation fixes. Forecasts are post-1.2.0 and use calendar today/tomorrow,
