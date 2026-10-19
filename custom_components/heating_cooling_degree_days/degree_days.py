@@ -6,6 +6,8 @@ from datetime import datetime
 from math import isfinite
 
 SECONDS_PER_DAY = 86400
+MAX_BRIDGED_GAP = 15 * 60
+CALCULATION_REVISION = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,18 +36,51 @@ def _timestamp(value: datetime) -> float:
     return value.timestamp()
 
 
+def _bridge_short_gaps(
+    samples: Iterable[TemperatureSample],
+) -> Iterable[tuple[float, float | None]]:
+    """Omit bounded invalid runs only when both surrounding valid states are known."""
+    # Resolve duplicate timestamps before deciding which value can be held.
+    by_timestamp = {
+        _timestamp(sample.timestamp): (
+            sample.temperature
+            if sample.temperature is not None and isfinite(sample.temperature)
+            else None
+        )
+        for sample in samples
+    }
+    gap_start: float | None = None
+    last_valid: float | None = None
+    for timestamp, temperature in sorted(by_timestamp.items()):
+        if temperature is None:
+            if gap_start is None:
+                gap_start = timestamp
+            continue
+        if gap_start is not None:
+            if last_valid is None or timestamp - gap_start > MAX_BRIDGED_GAP:
+                yield gap_start, None
+            gap_start = None
+        yield timestamp, temperature
+        last_valid = temperature
+    if gap_start is not None:
+        # An open-ended interruption cannot be assumed to be short.
+        yield gap_start, None
+
+
 def integrate_degree_days(
     samples: Iterable[TemperatureSample],
     start: datetime,
     end: datetime,
     base_temp: float,
 ) -> DayResult:
-    """Integrate held values in [start, end), without bridging invalid states.
+    """Integrate held values in [start, end), bridging confirmed short invalid spans.
 
-    The last state at or before start seeds the window. A valid value holds
-    until the next sample or end; None and non-finite values start gaps.
-    Equal timestamps use the last supplied state. Leading gaps stay uncovered.
-    Elapsed degree-seconds are divided by 86400 even on 23/25-hour local days.
+    Invalid runs of at most MAX_BRIDGED_GAP seconds hold the preceding valid
+    value, provided a valid recovery is observed. Longer/open-ended runs and
+    gaps without a known preceding value remain uncovered. Samples outside the
+    window provide boundary context only; integrals are clipped to the window.
+    Equal timestamps use the last supplied state. Elapsed degree-seconds are
+    divided by 86400 even on 23/25-hour local days.
     """
     start_ts, end_ts = _timestamp(start), _timestamp(end)
     if end_ts <= start_ts:
@@ -53,17 +88,13 @@ def integrate_degree_days(
     if not isfinite(base_temp):
         raise ValueError("Base temperature must be finite")
 
-    ordered = sorted(samples, key=lambda sample: _timestamp(sample.timestamp))
+    ordered = _bridge_short_gaps(samples)
     cursor = start_ts
     held: float | None = None
     hdd_seconds = cdd_seconds = temperature_seconds = coverage_seconds = 0.0
 
-    # A gap at end closes the final held interval without inventing a reading.
-    for sample in (*ordered, TemperatureSample(end, None)):
-        timestamp = _timestamp(sample.timestamp)
-        temperature = sample.temperature
-        if temperature is not None and not isfinite(temperature):
-            temperature = None
+    # Apply the end sentinel after bridging so it cannot invent a recovery.
+    for timestamp, temperature in (*ordered, (end_ts, None)):
         if timestamp <= start_ts:
             held = temperature
             continue

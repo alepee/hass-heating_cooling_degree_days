@@ -19,7 +19,10 @@ from custom_components.heating_cooling_degree_days.coordinator import (
     STORAGE_KEY,
     HDDDataUpdateCoordinator,
 )
-from custom_components.heating_cooling_degree_days.degree_days import TemperatureSample
+from custom_components.heating_cooling_degree_days.degree_days import (
+    CALCULATION_REVISION,
+    TemperatureSample,
+)
 from custom_components.heating_cooling_degree_days.history import TemperatureHistory
 from custom_components.heating_cooling_degree_days.periods import DailyRecord
 from custom_components.heating_cooling_degree_days.sensor import DegreeDegreeSensor
@@ -434,3 +437,161 @@ async def test_legacy_probes_actual_history_once_outside_retention(hass, freezer
         await resumed.async_load_stored_data()
         await resumed.async_refresh()
         assert history.await_count == 4  # Only the newly completed June 4 is queried.
+
+
+@pytest.mark.freeze_time("2026-06-03 12:00:00+00:00")
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_old_revision_retries_short_gap_immediately_after_upgrade(
+    hass, hass_storage, legacy
+):
+    """Persisted beta.3 partial/legacy days bypass their six-hour wait once."""
+    coordinator = make_coordinator(hass, include_cooling=True)
+    day = date(2026, 6, 2)
+    attempted = dt_util.now().timestamp()
+    coordinator.ledger = {
+        date(2026, 6, 1): DailyRecord(8, 0, 86400, 86400, 10),
+        day: DailyRecord(
+            12 if legacy else 8 * (86400 - 2.8) / 86400,
+            0,
+            None if legacy else 86400 - 2.8,
+            86400,
+            10,
+            attempted,
+            legacy=legacy,
+        ),
+    }
+    await coordinator._save_ledger(coordinator.ledger)
+    # Actual beta.3 Store v2 payloads predate the optional revision field.
+    for record in hass_storage[f"{STORAGE_KEY}_test-entry"]["data"]["days"].values():
+        record.pop("last_attempt_revision")
+    resumed = make_coordinator(hass, include_cooling=True)
+    await resumed.async_load_stored_data()
+    start = datetime(2026, 6, 2, tzinfo=UTC)
+    gap = start + timedelta(hours=12)
+    with patch(
+        HISTORY,
+        return_value=TemperatureHistory(
+            (
+                TemperatureSample(start, 10),
+                TemperatureSample(gap, None),
+                TemperatureSample(gap + timedelta(seconds=2.8), 10),
+            ),
+            None,
+            0,
+        ),
+    ) as history:
+        await resumed.async_refresh()
+        assert history.await_count == 1  # Cached complete June 1 stays finalized.
+        for period in ("daily", "weekly", "monthly"):
+            assert resumed.period_attributes[f"hdd_{period}"]["coverage"] == 1
+            assert resumed.period_attributes[f"hdd_{period}"]["partial"] is False
+            assert resumed.period_attributes[f"hdd_{period}"]["legacy_days"] == 0
+        assert resumed.data["hdd_daily"] == 8
+        assert resumed.data["hdd_monthly"] == 16
+        assert resumed.ledger[day].last_attempt_revision == CALCULATION_REVISION
+        restarted = make_coordinator(hass)
+        await restarted.async_load_stored_data()
+        await restarted.async_refresh()
+        assert history.await_count == 1
+
+
+@pytest.mark.freeze_time("2026-06-03 12:00:00+00:00")
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_old_revision_retry_is_once_when_long_gap_remains(hass, legacy):
+    """A real thirty-minute outage stays partial; revision persists even if legacy is kept."""
+    coordinator = make_coordinator(hass, include_weekly=False, include_monthly=False)
+    day = date(2026, 6, 2)
+    coordinator.ledger[day] = DailyRecord(
+        12 if legacy else 8 * 23.5 / 24,
+        0,
+        None if legacy else 84600,
+        86400,
+        10,
+        dt_util.now().timestamp(),
+        legacy=legacy,
+    )
+    gap = datetime(2026, 6, 2, 12, tzinfo=UTC)
+    with patch(
+        HISTORY,
+        return_value=TemperatureHistory(
+            (
+                TemperatureSample(gap - timedelta(hours=12), 10),
+                TemperatureSample(gap, None),
+                TemperatureSample(gap + timedelta(minutes=30), 10),
+            ),
+            None,
+            0,
+        ),
+    ) as history:
+        await coordinator.async_refresh()
+        assert history.await_count == 1
+        assert coordinator.ledger[day].last_attempt_revision == CALCULATION_REVISION
+        assert coordinator.ledger[day].legacy is legacy
+        if not legacy:
+            assert coordinator.period_attributes["hdd_daily"]["partial"] is True
+            assert coordinator.period_attributes["hdd_daily"]["coverage"] == 23.5 / 24
+        restarted = make_coordinator(hass, include_weekly=False, include_monthly=False)
+        await restarted.async_load_stored_data()
+        await restarted.async_refresh()
+        assert history.await_count == 1
+
+
+@pytest.mark.freeze_time("2026-06-03 12:00:00+00:00")
+async def test_upgrade_probes_old_revision_once_outside_nominal_retention(hass):
+    """Previous failed attempts do not suppress the one-time upgrade recovery probe."""
+    coordinator = make_coordinator(hass)
+    recorder = get_instance(hass)
+    recorder.auto_purge = True
+    recorder.keep_days = 1
+    coordinator.ledger = {
+        date(2026, 6, 1): DailyRecord(
+            12, None, None, 86400, None, dt_util.now().timestamp(), legacy=True
+        ),
+        date(2026, 6, 2): DailyRecord(8, 0, 86400, 86400, 10),
+    }
+    with patch(HISTORY, return_value=TemperatureHistory((), None, 0)) as history:
+        await coordinator.async_refresh()
+        assert history.await_count == 1
+        await coordinator.async_refresh()
+        assert history.await_count == 1
+    assert (
+        coordinator.ledger[date(2026, 6, 1)].last_attempt_revision
+        == CALCULATION_REVISION
+    )
+
+
+@pytest.mark.freeze_time("2026-06-03 12:00:00+00:00")
+@pytest.mark.parametrize("gap_seconds", [2.8, 1800])
+async def test_new_day_restart_gap_or_long_outage_coverage(hass, gap_seconds):
+    """New short interruptions are covered; a new thirty-minute outage is partial."""
+    coordinator = make_coordinator(hass)
+    coordinator.ledger[date(2026, 6, 1)] = DailyRecord(8, 0, 86400, 86400, 10)
+    start = datetime(2026, 6, 2, tzinfo=UTC)
+    gap = start + timedelta(hours=12)
+    with patch(
+        HISTORY,
+        return_value=TemperatureHistory(
+            (
+                TemperatureSample(start, 10),
+                TemperatureSample(gap, None),
+                TemperatureSample(gap + timedelta(seconds=gap_seconds), 10),
+            ),
+            None,
+            0,
+        ),
+    ):
+        await coordinator.async_refresh()
+    missing_seconds = 0 if gap_seconds <= 900 else gap_seconds
+    assert coordinator.data["hdd_daily"] == pytest.approx(
+        8 * (86400 - missing_seconds) / 86400
+    )
+    for period, expected_seconds in (
+        ("daily", 86400),
+        ("weekly", 172800),
+        ("monthly", 172800),
+    ):
+        attrs = coordinator.period_attributes[f"hdd_{period}"]
+        assert attrs["coverage"] == pytest.approx(
+            (expected_seconds - missing_seconds) / expected_seconds
+        )
+        assert attrs["partial"] is bool(missing_seconds)

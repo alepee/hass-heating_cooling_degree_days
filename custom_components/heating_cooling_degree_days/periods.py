@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, tzinfo
 from typing import Self
 
-from .degree_days import DayResult
+from .degree_days import CALCULATION_REVISION, DayResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +20,9 @@ class DailyRecord:
     mean_temp: float | None
     last_attempt: float = 0
     legacy: bool = False
+    # Kernel revision of the last attempt, even if older values were retained.
+    # Missing in beta.3 stores; complete non-legacy days remain finalized.
+    last_attempt_revision: int = 0
 
     @classmethod
     def from_result(cls, result: DayResult, attempted: datetime) -> Self:
@@ -31,11 +34,12 @@ class DailyRecord:
             result.window_seconds,
             result.mean_temp,
             attempted.timestamp(),
+            last_attempt_revision=CALCULATION_REVISION,
         )
 
     @property
     def complete(self) -> bool:
-        """Only measured full days are final; legacy values can be corrected once."""
+        """Only fully covered days are final; legacy values can be corrected once."""
         return not self.legacy and self.coverage_seconds == self.window_seconds
 
 

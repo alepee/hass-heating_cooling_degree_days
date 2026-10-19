@@ -17,7 +17,7 @@ from .const import (
     DOMAIN,
     SCAN_INTERVAL,
 )
-from .degree_days import DayResult, integrate_degree_days
+from .degree_days import CALCULATION_REVISION, DayResult, integrate_degree_days
 from .history import TemperatureHistory, get_temperature_history
 from .periods import (
     DailyRecord,
@@ -182,17 +182,23 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
             record = self.ledger.get(day)
             if record and record.complete:
                 continue
+            needs_revision = (
+                record is not None
+                and record.last_attempt_revision < CALCULATION_REVISION
+            )
             _, end = day_window(day, now.tzinfo)
             if (
                 recorder.auto_purge
                 and end.timestamp() <= cutoff
+                and not needs_revision
                 and not (record and record.legacy and not record.last_attempt)
             ):
-                # Probe legacy days once even outside nominal retention: recorder
-                # may still contain them (purge has not run, or policy changed).
+                # Probe legacy and outdated incomplete days once even outside
+                # nominal retention: recorder may still hold recoverable history.
                 continue
             if (
                 record
+                and not needs_revision
                 and now.timestamp() - record.last_attempt
                 < PARTIAL_RETRY_INTERVAL.total_seconds()
             ):
@@ -273,9 +279,13 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
             # rather than combining incompatible values from two recorder reads.
             if old and old.legacy:
                 # Legacy scalar methods can be wrong in either direction. Replace
-                # them once, only with a measured full day, even if totals fall.
+                # them once, only with a fully covered day, even if totals fall.
                 if not record.complete:
-                    record = replace(old, last_attempt=now.timestamp())
+                    record = replace(
+                        old,
+                        last_attempt=now.timestamp(),
+                        last_attempt_revision=CALCULATION_REVISION,
+                    )
                 elif day == yesterday:
                     yesterday_history = history
             elif old and (
@@ -283,7 +293,11 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
                 or (old.hdd or 0) > result.hdd
                 or (old.cdd or 0) > result.cdd
             ):
-                record = replace(old, last_attempt=now.timestamp())
+                record = replace(
+                    old,
+                    last_attempt=now.timestamp(),
+                    last_attempt_revision=CALCULATION_REVISION,
+                )
             elif day == yesterday:
                 yesterday_history = history
             ledger[day] = record

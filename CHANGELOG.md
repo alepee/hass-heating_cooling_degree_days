@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Bridge confirmed invalid temperature spans of up to 15 minutes by holding the preceding valid temperature. Brief Home Assistant restart interruptions no longer mark daily/weekly/monthly totals partial or block legacy-day correction. Longer or unresolved interruptions stay uncovered.
+- Read 15 minutes of recorder context around each day to resolve interruptions crossing midnight, while keeping integrals inside the requested day. Coverage includes bridged time; the policy requires both a preceding valid value and a recorded recovery.
+- Immediately retry older partial and legacy records once after the calculation revision, including beta.3 records with recent attempts. The seven-date refresh limit remains; unsuccessful retries persist the revision and resume the normal cooldown/retention policy. Complete non-legacy days are not recalculated.
+
 ## [1.2.0-beta.3] - 2026-10-19
 
 ### Fixed

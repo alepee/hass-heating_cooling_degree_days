@@ -2,7 +2,7 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import partial
 import logging
 from math import isfinite
@@ -15,7 +15,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import TemperatureConverter
 
-from .degree_days import TemperatureSample
+from .degree_days import MAX_BRIDGED_GAP, TemperatureSample
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,8 +71,11 @@ async def get_temperature_history(
     entity_id: str,
     calculation_unit: str,
 ) -> TemperatureHistory:
-    """Fetch the start-state and all changes before end, including unit changes.
+    """Fetch states plus short-gap context on both sides of the requested window.
 
+    The extra start-state can seed a gap crossing midnight. Look-ahead confirms
+    recovery after the end; the kernel clips contributions to the original day.
+    UTC arithmetic keeps this context bounded across daylight-saving changes.
     Empty history is a successful query with zero coverage. Recorder failures
     propagate as UpdateFailed so a cached measurement cannot look fresh.
     """
@@ -87,8 +90,8 @@ async def get_temperature_history(
             partial(
                 get_significant_states,
                 hass,
-                dt_util.as_utc(start_time),
-                dt_util.as_utc(end_time),
+                dt_util.as_utc(start_time) - timedelta(seconds=MAX_BRIDGED_GAP),
+                dt_util.as_utc(end_time) + timedelta(seconds=MAX_BRIDGED_GAP),
                 [entity_id],
                 include_start_time_state=True,
                 significant_changes_only=False,
