@@ -17,6 +17,8 @@ from custom_components.heating_cooling_degree_days.history import (
     get_temperature_history,
 )
 from custom_components.heating_cooling_degree_days.source import CONF_SOURCE_REGISTRY_ID
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
+from homeassistant.core import CoreState
 from homeassistant.helpers import entity_registry as er, issue_registry as ir
 from homeassistant.util import dt as dt_util
 
@@ -25,6 +27,12 @@ HISTORY = (
     "custom_components.heating_cooling_degree_days.coordinator.get_temperature_history"
 )
 ATTRS = {"device_class": "temperature", "unit_of_measurement": "°C"}
+
+
+@pytest.fixture(autouse=True)
+def running_hass(hass):
+    """Existing source lifecycle tests model reloads of an already running HA."""
+    hass.state = CoreState.running
 
 
 def add_source(hass, name="outside"):
@@ -374,3 +382,118 @@ async def test_unload_cancels_pending_rename_commit(hass, recorder_mock):
         assert await hass.config_entries.async_unload(entry.entry_id)
         assert cancelled.is_set()
     assert entry.data["temperature_sensor"] == source.entity_id
+
+
+@pytest.mark.parametrize("registered", [True, False])
+@pytest.mark.freeze_time("2026-06-03 12:00:00+00:00")
+async def test_startup_does_not_report_or_suspend_stateless_source(hass, registered):
+    """Setup and refresh may use recorded days before the source platform loads."""
+    hass.state = CoreState.starting
+    dt_util.set_default_time_zone(UTC)
+    entity_id = "sensor.late_source"
+    if registered:
+        source = er.async_get(hass).async_get_or_create("sensor", "test", "late_source")
+        entity_id = source.entity_id
+    entry = add_entry(hass, entity_id)
+    with patch(HISTORY, side_effect=full_day) as history:
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        coordinator = entry.runtime_data
+        assert history.await_count == 2
+        assert coordinator.data["hdd_monthly"] == 16
+        assert coordinator.period_attributes["hdd_monthly"]["coverage"] == 1
+        assert not coordinator.source_missing
+        assert not coordinator.period_attributes["hdd_monthly"]["source_missing"]
+        assert issue(hass, entry) is None
+        await coordinator.async_refresh()
+        assert issue(hass, entry) is None
+        # A source appearing just before STARTED must not cause a transient repair.
+        hass.states.async_set(entity_id, "10", ATTRS)
+        hass.state = CoreState.running
+        hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        assert issue(hass, entry) is None
+        assert not coordinator.source_missing
+        await coordinator.async_refresh()
+        assert coordinator.data["hdd_monthly"] == 16
+        assert coordinator.period_attributes["hdd_monthly"]["coverage"] == 1
+
+
+@pytest.mark.freeze_time("2026-06-03 12:00:00+00:00")
+async def test_missing_source_checked_at_start_and_cleared_on_return(hass):
+    """An absent registry entry becomes actionable only after startup completes."""
+    hass.state = CoreState.starting
+    entry = add_entry(hass, "sensor.missing")
+    with patch(HISTORY, side_effect=full_day):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        assert issue(hass, entry) is None
+        hass.state = CoreState.running
+        hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        assert issue(hass, entry) is not None
+        assert entry.runtime_data.source_missing
+        hass.states.async_set("sensor.missing", "10", ATTRS)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        assert issue(hass, entry) is None
+        assert not entry.runtime_data.source_missing
+
+
+@pytest.mark.freeze_time("2026-06-03 12:00:00+00:00")
+async def test_registered_stateless_source_clears_stale_issue_without_new_repair(hass):
+    """A registered source may load late without a repair or arbitrary grace timer."""
+    hass.state = CoreState.starting
+    source = er.async_get(hass).async_get_or_create("sensor", "test", "late_source")
+    entry = add_entry(hass, source.entity_id)
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        f"missing_source_{entry.entry_id}",
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="missing_source",
+    )
+    with patch(HISTORY, side_effect=full_day) as history:
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        ledger = dict(entry.runtime_data.ledger)
+        hass.state = CoreState.running
+        hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        assert issue(hass, entry) is None
+        assert entry.runtime_data.source_missing
+        history.reset_mock()
+        await entry.runtime_data.async_refresh()
+        history.assert_not_awaited()
+        assert entry.runtime_data.ledger == ledger
+        assert issue(hass, entry) is None
+        hass.states.async_set(source.entity_id, "10", ATTRS)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        assert issue(hass, entry) is None
+        assert not entry.runtime_data.source_missing
+
+
+async def test_unload_before_start_cancels_first_source_check(hass):
+    """The STARTED callback must not create repairs after its entry is unloaded."""
+    hass.state = CoreState.starting
+    entry = add_entry(hass, "sensor.missing")
+    with patch(HISTORY, side_effect=full_day):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done(wait_background_tasks=True)
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    hass.state = CoreState.running
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert issue(hass, entry) is None
+
+
+async def test_already_running_stateless_registered_source_does_not_need_repair(hass):
+    """An integration reload also distinguishes a known source from a deleted one."""
+    source = er.async_get(hass).async_get_or_create("sensor", "test", "late_source")
+    entry = add_entry(hass, source.entity_id)
+    with patch(HISTORY, side_effect=full_day) as history:
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        history.assert_not_awaited()
+        assert entry.runtime_data.source_missing
+        assert issue(hass, entry) is None
