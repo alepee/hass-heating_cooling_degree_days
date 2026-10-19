@@ -33,12 +33,27 @@ lookup after a rename and the coverage gap left by a removed/restored state.
 
 ## Missing sources
 
-A missing state or missing/mismatched saved registry entry creates one warning
-repair per config entry. The English/French notice links to the integration and
-instructs the user to open Reconfigure. It clears on restoration, successful
-reconfiguration or entry removal. Listeners are owned by the config entry.
+The first missing-source check runs through `async_at_started`, with cleanup
+registered on the config entry. Before HA finishes startup, live-source absence
+does not create a repair, set `source_missing`, or suspend recorder backfill.
+Other integrations may not have loaded their entities yet; recorder history is
+still usable independently of their current live state.
+
+After startup, an absent/mismatched saved registry entry creates one warning
+repair per config entry. An unregistered source with a live state is also valid.
+A matching registered entity with no state does **not** create a repair, even if
+it remains stateless: this is treated as unavailable, without a grace timer.
+Backfill is then paused and `source_missing` is true until its state appears,
+while existing ledger values stay available. This avoids asking the user to
+reconfigure a source whose integration is simply slow or temporarily unavailable.
 An existing `unknown`/`unavailable` state is handled as an observed gap by the
 history kernel, rather than as a deleted source.
+
+The English/French repair notice links to the integration and instructs the user
+to open Reconfigure. It clears on restoration, successful reconfiguration or
+entry removal; the startup check also clears stale notices for valid registered
+sources. Reloading the integration after HA has started checks immediately.
+Listeners and the deferred startup check are owned by the config entry.
 
 While a source is absent, backfill is deliberately suspended: a stale numeric
 start-state must not be extrapolated across newly completed days. Cached records

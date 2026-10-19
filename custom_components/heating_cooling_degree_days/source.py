@@ -2,9 +2,10 @@
 
 from homeassistant.components.recorder import get_instance
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er, issue_registry as ir
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.start import async_at_started
 
 from .const import CONF_TEMPERATURE_SENSOR, DOMAIN
 
@@ -35,12 +36,18 @@ class SourceTracker:
     @callback
     def async_available(self) -> bool:
         """Publish a repair for missing entities, leaving unavailable states to history."""
+        # Source integrations can load after us. Historical recorder data remains
+        # usable while HA starts; absence of a live state is not evidence of a gap.
+        if self.hass.state is not CoreState.running:
+            return True
+
         registered = er.async_get(self.hass).async_get(self.entity_id)
-        available = self.hass.states.get(self.entity_id) is not None and (
-            self.registry_id is None
-            or (registered is not None and registered.id == self.registry_id)
-        )
-        if available:
+        has_state = self.hass.states.get(self.entity_id) is not None
+        source_exists = (
+            registered is not None
+            and (self.registry_id is None or registered.id == self.registry_id)
+        ) or (self.registry_id is None and has_state)
+        if source_exists:
             async_clear_source_issue(self.hass, self.entry.entry_id)
         else:
             ir.async_create_issue(
@@ -56,7 +63,7 @@ class SourceTracker:
                     "url": f"/config/integrations/integration/{DOMAIN}",
                 },
             )
-        return available
+        return source_exists and has_state
 
     @callback
     def async_update_entry(self) -> None:
@@ -124,4 +131,9 @@ class SourceTracker:
         self.entry.async_on_unload(
             async_track_state_change_event(self.hass, self.entity_id, state_changed)
         )
-        coordinator.source_missing = not self.async_available()
+
+        @callback
+        def started(_hass: HomeAssistant) -> None:
+            coordinator.source_missing = not self.async_available()
+
+        self.entry.async_on_unload(async_at_started(self.hass, started))

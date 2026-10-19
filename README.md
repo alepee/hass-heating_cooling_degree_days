@@ -59,8 +59,10 @@ the source. Legacy daily totals are preserved with coverage assumed complete,
 flagged by `legacy_days`; absent legacy cooling values remain unknown.
 
 Renaming a registered temperature sensor automatically updates this integration
-and preserves its calculated history. If the source disappears, a Repairs notice
-links to the integration: use the entry’s three-dot menu > Reconfigure to select
+and preserves its calculated history. Source checks wait until Home Assistant
+has finished starting. A registered sensor that has not published a state yet
+does not trigger a repair. If the source disappears from the registry, a Repairs
+notice links to the integration: use the entry’s three-dot menu > Reconfigure to select
 a replacement. While the source is missing, `source_missing` is true, backfill
 is paused, and existing ledger values remain available. Newly missing days have
 unknown values and reduce coverage; they are not counted as zero. Restoring the
