@@ -95,7 +95,8 @@ Follow the same format as the maintainer's other integrations (see
 [hass-hitachi_yutaki releases](https://github.com/alepee/hass-hitachi_yutaki/releases)).
 Write in English, from the maintainer's point of view, user-facing first.
 Avoid the em dash; use a colon in the title. Link every item to its issue or PR.
-Omit sections that have nothing to say.
+Omit sections that have nothing to say. Betas skip Highlights: What's New already
+carries the changes.
 
 ```markdown
 # Heating & Cooling Degree Days vX.Y.Z: <short theme>
@@ -108,6 +109,7 @@ Omit sections that have nothing to say.
 <or, for a stable release with required action:>
 > ⚠️ **<Who is affected>:** <one-line warning, link to the upgrade note>
 
+<Stable releases bundling several betas only; never repeat What's New:>
 ## 🎯 Highlights
 
 - **<Short title>**: <observable effect> ([#N](https://github.com/alepee/hass-heating_cooling_degree_days/pull/N))
