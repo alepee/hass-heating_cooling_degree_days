@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 import logging
 
 from homeassistant.components.recorder import get_instance
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
@@ -183,7 +183,13 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
             if record and record.complete:
                 continue
             _, end = day_window(day, now.tzinfo)
-            if recorder.auto_purge and end.timestamp() <= cutoff:
+            if (
+                recorder.auto_purge
+                and end.timestamp() <= cutoff
+                and not (record and record.legacy and not record.last_attempt)
+            ):
+                # Probe legacy days once even outside nominal retention: recorder
+                # may still contain them (purge has not run, or policy changed).
                 continue
             if (
                 record
@@ -202,6 +208,22 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
         )
         return candidates[:MAX_BACKFILL_DAYS]
 
+    @callback
+    def async_update_source_status(self) -> None:
+        """Publish live source status without waiting for backfill or clearing errors."""
+        missing = self.source is not None and not self.source.async_available()
+        changed = self.source_missing != missing or any(
+            attrs.get("source_missing") != missing
+            for attrs in self.period_attributes.values()
+        )
+        self.source_missing = missing
+        if changed:
+            self.period_attributes = {
+                key: {**attrs, "source_missing": missing}
+                for key, attrs in self.period_attributes.items()
+            }
+            self.async_update_listeners()
+
     async def async_midnight_refresh(self, _now: datetime) -> None:
         """Roll calendar periods over shortly after local midnight."""
         await self.async_request_refresh()
@@ -210,6 +232,7 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
         """Backfill bounded history, then atomically publish values and their labels."""
         # Timestamp the attempt even if a recorder read or storage write fails.
         self.last_refresh_time = dt_util.utcnow()
+        self.async_update_source_status()
         now = dt_util.now()
         periods = calendar_periods(now.date())
         if not self.include_weekly:
@@ -229,9 +252,6 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
             == str(yesterday)
             else None
         )
-        self.source_missing = (
-            self.source is not None and not self.source.async_available()
-        )
         # A removed source can leave an old numeric recorder state behind. Do not
         # extrapolate it into newly completed days while the source is missing.
         dates = [] if self.source_missing else self._backfill_dates(needed, now)
@@ -247,10 +267,18 @@ class HDDDataUpdateCoordinator(DataUpdateCoordinator[dict[str, float | None]]):
             result = integrate_degree_days(history.samples, start, end, self.base_temp)
             record = DailyRecord.from_result(result, now)
             old = ledger.get(day)
-            # A purge or rewritten history must not reduce an accumulating total.
+            # Outside legacy correction, a purge or rewritten history must not
+            # reduce an accumulating total.
             # Keep the entire previous observation (including coverage/mean),
             # rather than combining incompatible values from two recorder reads.
-            if old and (
+            if old and old.legacy:
+                # Legacy scalar methods can be wrong in either direction. Replace
+                # them once, only with a measured full day, even if totals fall.
+                if not record.complete:
+                    record = replace(old, last_attempt=now.timestamp())
+                elif day == yesterday:
+                    yesterday_history = history
+            elif old and (
                 (old.coverage_seconds or 0) >= result.coverage_seconds
                 or (old.hdd or 0) > result.hdd
                 or (old.cdd or 0) > result.cdd

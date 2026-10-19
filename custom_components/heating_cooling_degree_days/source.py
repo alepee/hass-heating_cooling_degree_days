@@ -102,7 +102,7 @@ class SourceTracker:
                         self.registry_id = registered.id
                         await coordinator._save_ledger(coordinator.ledger)
                         self.async_update_entry()
-                self.async_available()
+                coordinator.async_update_source_status()
 
         @callback
         def registry_updated(event) -> None:
@@ -117,7 +117,7 @@ class SourceTracker:
         @callback
         def state_changed(_event) -> None:
             was_missing = coordinator.source_missing
-            coordinator.source_missing = not self.async_available()
+            coordinator.async_update_source_status()
             if was_missing and not coordinator.source_missing:
                 self.entry.async_create_background_task(
                     self.hass, coordinator.async_request_refresh(), "source restored"
@@ -134,6 +134,6 @@ class SourceTracker:
 
         @callback
         def started(_hass: HomeAssistant) -> None:
-            coordinator.source_missing = not self.async_available()
+            coordinator.async_update_source_status()
 
         self.entry.async_on_unload(async_at_started(self.hass, started))

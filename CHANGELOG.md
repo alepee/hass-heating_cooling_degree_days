@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Source availability attributes update immediately when the source returns and are reconciled on every refresh, independently of recorder backfill or unchanged degree-day totals.
+- Legacy daily values are recalculated once when Recorder provides a complete day, in batches of at most seven dates per refresh. Partial or missing history keeps the flagged legacy value. Completed corrections persist across restarts.
+
+### Changed
+- Correcting legacy values can lower a weekly or monthly total during the current period. This is a one-time correction per legacy day (possibly spread across several refreshes), which Home Assistant's `total_increasing` statistics may interpret as a reset. Review affected long-term statistics in Developer Tools > Statistics; existing statistics are not rewritten automatically.
+
 ## [1.2.0-beta.2] - 2026-10-19
 
 ### Added

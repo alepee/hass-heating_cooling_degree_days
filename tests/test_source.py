@@ -20,6 +20,7 @@ from custom_components.heating_cooling_degree_days.source import CONF_SOURCE_REG
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import CoreState
 from homeassistant.helpers import entity_registry as er, issue_registry as ir
+from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
 pytestmark = [pytest.mark.usefixtures("recorder_mock", "enable_custom_integrations")]
@@ -231,7 +232,7 @@ async def test_legacy_fingerprint_is_migrated_before_rename(hass, hass_storage):
             "daily_hdd_values": {"2026-06-02": 12.5},
         },
     }
-    with patch(HISTORY, side_effect=full_day):
+    with patch(HISTORY, return_value=TemperatureHistory((), None, 0)):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done(wait_background_tasks=True)
         assert entry.runtime_data.ledger[date(2026, 6, 2)].hdd == 12.5
@@ -497,3 +498,81 @@ async def test_already_running_stateless_registered_source_does_not_need_repair(
         history.assert_not_awaited()
         assert entry.runtime_data.source_missing
         assert issue(hass, entry) is None
+
+
+@pytest.mark.freeze_time("2026-06-03 12:00:00+00:00")
+@pytest.mark.parametrize("previous_failure", [False, True])
+async def test_source_status_is_published_immediately_without_waiting_for_backfill(
+    hass,
+    previous_failure,
+):
+    """Entity attributes follow a restored source even if refresh is debounced."""
+    source = add_source(hass)
+    entry = add_entry(hass, source.entity_id)
+    with patch(HISTORY, side_effect=full_day):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done(wait_background_tasks=True)
+    coordinator = entry.runtime_data
+    entities = er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
+    before = dict(coordinator.data)
+    if previous_failure:
+        coordinator.async_set_update_error(UpdateFailed("recorder unavailable"))
+    with patch.object(coordinator, "async_request_refresh") as refresh:
+        hass.states.async_remove(source.entity_id)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        assert coordinator.source_missing
+        assert all(
+            hass.data["sensor"]
+            .get_entity(entity.entity_id)
+            .extra_state_attributes["source_missing"]
+            for entity in entities
+        )
+        hass.states.async_set(source.entity_id, "10", ATTRS)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        refresh.assert_awaited_once()
+        assert not coordinator.source_missing
+        assert all(
+            not attrs["source_missing"]
+            for attrs in coordinator.period_attributes.values()
+        )
+        assert all(
+            not hass.data["sensor"]
+            .get_entity(entity.entity_id)
+            .extra_state_attributes["source_missing"]
+            for entity in entities
+        )
+        assert coordinator.data == before
+        assert coordinator.last_update_success is not previous_failure
+        for entity in entities:
+            state = hass.states.get(entity.entity_id)
+            if previous_failure:
+                assert state.state == "unavailable"
+            else:
+                assert state.attributes["source_missing"] is False
+
+
+@pytest.mark.freeze_time("2026-06-03 12:00:00+00:00")
+async def test_refresh_repairs_stale_source_metadata_even_when_totals_unchanged(hass):
+    """Every poll reconciles live availability, not only the state-change callback."""
+    source = add_source(hass)
+    entry = add_entry(hass, source.entity_id)
+    with patch(HISTORY, side_effect=full_day):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done(wait_background_tasks=True)
+    coordinator = entry.runtime_data
+    before = dict(coordinator.data)
+    coordinator.source_missing = False
+    coordinator.period_attributes = {
+        key: {**attrs, "source_missing": True}
+        for key, attrs in coordinator.period_attributes.items()
+    }
+    with patch(HISTORY) as history:
+        await coordinator.async_refresh()
+        history.assert_not_awaited()
+    assert coordinator.last_update_success
+    assert coordinator.data == before
+    assert all(
+        not attrs["source_missing"] for attrs in coordinator.period_attributes.values()
+    )
+    for entity in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id):
+        assert not hass.states.get(entity.entity_id).attributes["source_missing"]
