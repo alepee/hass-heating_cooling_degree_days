@@ -65,8 +65,10 @@ class DegreeDegreeSensor(CoordinatorEntity, SensorEntity):
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
+        # Daily values change once per day, so measurement statistics keep
+        # their long-term history; period totals accumulate within the period.
         self._attr_state_class = (
-            None
+            SensorStateClass.MEASUREMENT
             if sensor_type in (SENSOR_TYPE_HDD_DAILY, SENSOR_TYPE_CDD_DAILY)
             else SensorStateClass.TOTAL_INCREASING
         )

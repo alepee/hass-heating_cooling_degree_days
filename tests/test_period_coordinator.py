@@ -215,8 +215,8 @@ async def test_fingerprint_change_rebuilds_available_history(hass, field, value)
 @pytest.mark.parametrize(
     ("sensor_type", "expected"),
     [
-        ("hdd_daily", None),
-        ("cdd_daily", None),
+        ("hdd_daily", SensorStateClass.MEASUREMENT),
+        ("cdd_daily", SensorStateClass.MEASUREMENT),
         ("hdd_weekly", SensorStateClass.TOTAL_INCREASING),
         ("hdd_monthly", SensorStateClass.TOTAL_INCREASING),
         ("cdd_weekly", SensorStateClass.TOTAL_INCREASING),

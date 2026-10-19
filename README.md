@@ -80,7 +80,8 @@ unknown values and reduce coverage; they are not counted as zero. Restoring the
 source clears the notice and resumes backfill. Selecting a different source
 starts a new ledger.
 
-Weekly/monthly sensors use `total_increasing`; daily sensors have no state class.
+Weekly/monthly sensors use `total_increasing`; daily sensors use `measurement`, so
+their long-term statistics keep the day-by-day history.
 After upgrading, Home Assistant may request a one-time statistics correction in
 Developer Tools > Statistics. Existing long-term statistics are not rewritten.
 
