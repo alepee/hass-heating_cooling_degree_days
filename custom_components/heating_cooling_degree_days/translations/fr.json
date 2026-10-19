@@ -68,5 +68,11 @@
   "common": {
     "default_title_heating": "Degrés-jours de chauffage",
     "default_title_heating_and_cooling": "Degrés-jours de chauffage et de refroidissement"
+  },
+  "issues": {
+    "missing_source": {
+      "title": "Source de température introuvable : {name}",
+      "description": "Le capteur source `{entity_id}` de {name} n’existe plus. Les degrés-jours déjà calculés sont conservés ; les jours manquants restent incomplets. Rétablissez la source, ou ouvrez [Heating & Cooling Degree Days]({url}), sélectionnez le menu à trois points de cette entrée, puis **Reconfigurer** pour choisir un autre capteur de température."
+    }
   }
 }

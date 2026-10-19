@@ -68,5 +68,11 @@
   "common": {
     "default_title_heating": "Heating Degree Days",
     "default_title_heating_and_cooling": "Heating & Cooling Degree Days"
+  },
+  "issues": {
+    "missing_source": {
+      "title": "Temperature source missing: {name}",
+      "description": "The source sensor `{entity_id}` for {name} no longer exists. Previously calculated degree days are retained; missing days remain incomplete. Restore the source, or open [Heating & Cooling Degree Days]({url}), select the three-dot menu for this entry, and choose **Reconfigure** to select another temperature sensor."
+    }
   }
 }

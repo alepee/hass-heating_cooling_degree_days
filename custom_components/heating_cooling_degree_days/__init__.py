@@ -23,6 +23,7 @@ from .const import (
     get_enabled_sensor_types,
 )
 from .coordinator import HDDDataUpdateCoordinator, async_remove_stored_data
+from .source import SourceTracker, async_clear_source_issue
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -82,18 +83,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: HDDConfigEntry) -> bool:
         "Yes" if include_monthly else "No",
     )
 
+    source = SourceTracker(hass, entry)
     coordinator = HDDDataUpdateCoordinator(
         hass=hass,
-        temp_entity=entry.data[CONF_TEMPERATURE_SENSOR],
+        temp_entity=source.entity_id,
         base_temp=entry.data[CONF_BASE_TEMPERATURE],
         temperature_unit=entry.data[CONF_TEMPERATURE_UNIT],
         entry_id=entry.entry_id,
+        source=source,
         include_cooling=include_cooling,
         include_weekly=include_weekly,
         include_monthly=include_monthly,
     )
 
     await coordinator.async_load_stored_data()
+    source.async_update_entry()
     # Let HA handle ConfigEntryNotReady and authentication/setup failures.
     await coordinator.async_config_entry_first_refresh()
 
@@ -117,6 +121,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HDDConfigEntry) -> bool:
                 hass, coordinator.async_midnight_refresh, hour=0, minute=0, second=5
             )
         )
+        source.async_track(coordinator)
         setup_complete = True
     finally:
         if not setup_complete:
@@ -178,4 +183,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: HDDConfigEntry) -> bool
 
 async def async_remove_entry(hass: HomeAssistant, entry: HDDConfigEntry) -> None:
     """Remove only this entry's persistent history when the entry is deleted."""
+    async_clear_source_issue(hass, entry.entry_id)
     await async_remove_stored_data(hass, entry.entry_id)

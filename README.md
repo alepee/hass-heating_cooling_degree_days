@@ -58,6 +58,15 @@ the previous observation to avoid artificial statistics resets. The ledger keeps
 the source. Legacy daily totals are preserved with coverage assumed complete,
 flagged by `legacy_days`; absent legacy cooling values remain unknown.
 
+Renaming a registered temperature sensor automatically updates this integration
+and preserves its calculated history. If the source disappears, a Repairs notice
+links to the integration: use the entry’s three-dot menu > Reconfigure to select
+a replacement. While the source is missing, `source_missing` is true, backfill
+is paused, and existing ledger values remain available. Newly missing days have
+unknown values and reduce coverage; they are not counted as zero. Restoring the
+source clears the notice and resumes backfill. Selecting a different source
+starts a new ledger.
+
 Weekly/monthly sensors use `total_increasing`; daily sensors have no state class.
 After upgrading, Home Assistant may request a one-time statistics correction in
 Developer Tools > Statistics. Existing long-term statistics are not rewritten.
