@@ -25,7 +25,11 @@ Register listeners and timers with their lifecycle owner, including
 ## Calculation contract
 
 - Hold each temperature until the next sample or the requested window's end.
-  Unknown/unavailable, invalid and unsupported-unit samples start gaps.
+  Bridge invalid runs of at most 15 minutes by holding the preceding valid value
+  only when a valid recovery is recorded. Consecutive invalid samples form one
+  run. Longer/open-ended runs or missing preceding values remain uncovered.
+  Recorder reads include 15 minutes of UTC context around the requested window;
+  the pure kernel clips integrals to that window.
 - Integrate elapsed degree-seconds and divide by 86,400, including DST days.
   Keep raw precision in calculations/storage; round only sensor presentation.
 - Daily means yesterday. Weekly/monthly mean completed days of the **current**
@@ -33,6 +37,8 @@ Register listeners and timers with their lifecycle owner, including
   Derive values and labels from the same reference date.
 - Backfill missing retained recorder history in bounded batches. Expose coverage,
   partial status and missing days. A failure must never become a healthy zero.
+  A calculation revision allows one immediate retry of older partial/legacy
+  records; persist the attempt revision even if coverage cannot improve.
 - Weekly/monthly use `total_increasing`; daily has no state class. Explain
   statistics and migration changes in CHANGELOG; do not rewrite HA history silently.
 - Minimum supported Home Assistant: **2025.1**. Stable 1.2.0 requires all planned

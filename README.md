@@ -24,9 +24,9 @@ For example, if you set a base temperature of 21°C (69.8°F):
 
 This integration uses a numerical integration method for calculating degree days:
 
-1. Recorder states are read for completed local calendar days, including the state at each day's start.
+1. Recorder states are read for completed local calendar days, with 15 minutes of context before and after each window to resolve short interruptions across midnight.
 2. Each state's temperature is converted from its recorded unit to the configured calculation unit. If its unit is missing, the current source unit (or the calculation unit) is assumed and recorded internally.
-3. A temperature holds until the next state or the end of the day. Unknown, unavailable, non-numeric, non-finite, or unsupported-unit states start gaps; gaps are never interpolated through.
+3. A temperature holds until the next state or the end of the day. Invalid states (unknown, unavailable, non-numeric, non-finite or unsupported-unit) lasting **at most 15 minutes** are bridged by holding the preceding valid temperature, only when a valid recovery is recorded. Consecutive invalid states form one interruption. Longer interruptions, missing preceding values and interruptions without a recorded recovery remain uncovered; there is no linear interpolation.
 4. Heating deficits and cooling excesses are multiplied by their elapsed seconds, summed, and divided by 86,400. No short intervals are dropped.
 
 This method provides more accurate results than simple daily averages, especially when temperature fluctuates significantly throughout the day.
@@ -34,7 +34,7 @@ This method provides more accurate results than simple daily averages, especiall
 The divisor remains 86,400 on daylight-saving transitions: a constant 8-degree
 heating deficit produces 8 × 23/24 degree days on a 23-hour day and 8 × 25/24
 on a 25-hour day. The mean temperature is weighted by the duration of valid
-states, excluding gaps.
+states, including short bridged interruptions and excluding remaining gaps.
 
 Daily sensors represent yesterday. Weekly and monthly sensors sum only completed
 days of the current calendar week (Monday start) or month. They reset to zero on
@@ -46,7 +46,9 @@ seconds), `partial`, `missing_days`, `days_counted`, `period_start`, `period_end
 and `completed_through`. Period boundaries label the full calendar period;
 coverage and totals stop at yesterday. An empty new period has zero value and
 coverage 1. A nonempty period with no observed time is unknown. Partial values
-include only covered time, without extrapolating across gaps. Recorder query
+include valid time and confirmed short bridged interruptions, without filling
+longer or unresolved gaps. Coverage 1 can therefore include held estimates during
+brief source interruptions. Recorder query
 failures mark sensors unavailable and retain the previous snapshot.
 
 Missing days are backfilled from recorder, at most seven dates per refresh,
@@ -56,10 +58,15 @@ recorder retention. Retries that reduce coverage or either cached integral keep
 the previous observation to avoid artificial statistics resets. The ledger keeps
 60 days. Coverage can remain partial if recorder has purged or never recorded
 the source. Legacy daily totals are flagged by `legacy_days`, with coverage
-assumed complete until Recorder provides a fully observed day to replace them.
+assumed complete until Recorder provides a fully covered day under the short-gap
+policy to replace them.
 Each legacy day is corrected once, within the seven-date refresh limit. Partial
 or missing history retains the old value. A correction may lower current-period
 totals and be interpreted as a statistics reset; see CHANGELOG before upgrading.
+After a calculation revision, older partial/legacy records receive one immediate
+retry without the six-hour delay, still limited to seven dates per refresh.
+Complete non-legacy days remain cached. If a midnight interruption has not yet
+recovered when queried, it remains partial until a later retry confirms recovery.
 
 Renaming a registered temperature sensor automatically updates this integration
 and preserves its calculated history. Source checks wait until Home Assistant
