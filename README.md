@@ -93,7 +93,7 @@ retroactively recomputed by this change.
 
 ### Using HACS (recommended)
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alepee&repository=hass-heating_cooling_degree_days)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alepee&category=integration&repository=hass-heating_cooling_degree_days)
 
 1. Open HACS
 2. Click on "Custom Repositories"
