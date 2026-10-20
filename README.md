@@ -2,6 +2,53 @@
 
 This custom integration calculates Heating Degree Days (HDD) and Cooling Degree Days (CDD) based on outdoor temperature measurements. Degree days are measurements designed to quantify the demand for energy needed to heat or cool a building.
 
+## Installation
+
+### Using HACS (recommended)
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alepee&category=integration&repository=hass-heating_cooling_degree_days)
+
+1. Open HACS
+2. Click on "Custom Repositories"
+3. Add this repository URL
+4. Select "Integration" as the category
+5. Click "Install"
+
+### Manual Installation
+
+1. Download the attached `heating_cooling_degree_days.zip` asset from the [releases page](https://github.com/alepee/hass-heating_cooling_degree_days/releases)
+2. Create `custom_components/heating_cooling_degree_days/` in your Home Assistant configuration directory if needed
+3. Extract the ZIP contents into that directory. The archive is flat: `manifest.json` must end up at `custom_components/heating_cooling_degree_days/manifest.json`
+4. Restart Home Assistant
+
+If you download GitHub's source archive instead, copy its
+`custom_components/heating_cooling_degree_days/` directory into your configuration.
+
+## Configuration
+
+1. Go to Settings -> Devices & Services
+2. Click the "+ ADD INTEGRATION" button
+3. Search for "Heating & Cooling Degree Days"
+4. Configure:
+   - Select your outdoor temperature sensor
+   - Set the base temperature (defaults are 18°C or 65°F)
+   - Enable/disable Cooling Degree Days calculation
+   - Choose whether to include weekly and monthly sensors
+
+### Changing the settings later
+
+1. Go to Settings -> Devices & Services -> Heating & Cooling Degree Days
+2. On the entry, open the three-dot menu (⋮) and choose "Reconfigure". There is no "Configure" button: all settings are edited through this menu entry
+3. The form is prefilled with the current settings; change what you need
+
+Entity IDs and history are preserved. Turning off the cooling, weekly or monthly
+sensors removes the matching entities. Changing the temperature source, the base
+temperature or the unit invalidates the stored daily values, so they are reset
+instead of being mixed with values calculated under the previous settings, and
+the weekly and monthly totals rebuild in bounded batches from history still
+available in recorder. Home Assistant's existing long-term statistics are not
+recalculated; changing calculation settings starts a new basis for future totals.
+
 ## What are Degree Days?
 
 ### Heating Degree Days (HDD)
@@ -88,53 +135,6 @@ Developer Tools > Statistics. Existing long-term statistics are not rewritten.
 **Note**: Values are kept unrounded for calculations and storage, and displayed
 with 1 decimal place (e.g., `12.3°C·d`). Previously stored daily totals are not
 retroactively recomputed by this change.
-
-## Installation
-
-### Using HACS (recommended)
-
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alepee&category=integration&repository=hass-heating_cooling_degree_days)
-
-1. Open HACS
-2. Click on "Custom Repositories"
-3. Add this repository URL
-4. Select "Integration" as the category
-5. Click "Install"
-
-### Manual Installation
-
-1. Download the attached `heating_cooling_degree_days.zip` asset from the [releases page](https://github.com/alepee/hass-heating_cooling_degree_days/releases)
-2. Create `custom_components/heating_cooling_degree_days/` in your Home Assistant configuration directory if needed
-3. Extract the ZIP contents into that directory. The archive is flat: `manifest.json` must end up at `custom_components/heating_cooling_degree_days/manifest.json`
-4. Restart Home Assistant
-
-If you download GitHub's source archive instead, copy its
-`custom_components/heating_cooling_degree_days/` directory into your configuration.
-
-## Configuration
-
-1. Go to Settings -> Devices & Services
-2. Click the "+ ADD INTEGRATION" button
-3. Search for "Heating & Cooling Degree Days"
-4. Configure:
-   - Select your outdoor temperature sensor
-   - Set the base temperature (defaults are 18°C or 65°F)
-   - Enable/disable Cooling Degree Days calculation
-   - Choose whether to include weekly and monthly sensors
-
-### Changing the settings later
-
-1. Go to Settings -> Devices & Services -> Heating & Cooling Degree Days
-2. On the entry, open the three-dot menu (⋮) and choose "Reconfigure". There is no "Configure" button: all settings are edited through this menu entry
-3. The form is prefilled with the current settings; change what you need
-
-Entity IDs and history are preserved. Turning off the cooling, weekly or monthly
-sensors removes the matching entities. Changing the temperature source, the base
-temperature or the unit invalidates the stored daily values, so they are reset
-instead of being mixed with values calculated under the previous settings, and
-the weekly and monthly totals rebuild in bounded batches from history still
-available in recorder. Home Assistant's existing long-term statistics are not
-recalculated; changing calculation settings starts a new basis for future totals.
 
 ## Features
 
