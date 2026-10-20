@@ -7,31 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.2.0-beta.5] - 2026-10-19
-
-### Fixed
-- Daily sensors use the `measurement` state class again, so their long-term statistics continue and the "entity no longer has a state class" repair raised by earlier 1.2.0 betas disappears. Weekly/monthly sensors keep `total_increasing` (#154)
-
-## [1.2.0-beta.4] - 2026-10-19
-
-### Fixed
-- Bridge confirmed invalid temperature spans of up to 15 minutes by holding the preceding valid temperature. Brief Home Assistant restart interruptions no longer mark daily/weekly/monthly totals partial or block legacy-day correction. Longer or unresolved interruptions stay uncovered.
-- Read 15 minutes of recorder context around each day to resolve interruptions crossing midnight, while keeping integrals inside the requested day. Coverage includes bridged time; the policy requires both a preceding valid value and a recorded recovery.
-- Immediately retry older partial and legacy records once after the calculation revision, including beta.3 records with recent attempts. The seven-date refresh limit remains; unsuccessful retries persist the revision and resume the normal cooldown/retention policy. Complete non-legacy days are not recalculated.
-
-## [1.2.0-beta.3] - 2026-10-19
-
-### Fixed
-- The missing-source Repairs notice no longer appears while Home Assistant is starting: the check waits for startup to complete, and a registered sensor that has not reported a state yet is not treated as removed (#149)
-- Source availability attributes update immediately when the source returns and are reconciled on every refresh, independently of recorder backfill or unchanged degree-day totals.
-- Legacy daily values are recalculated once when Recorder provides a complete day, in batches of at most seven dates per refresh. Partial or missing history keeps the flagged legacy value. Completed corrections persist across restarts (#150)
-
-### Changed
-- Correcting legacy values can lower a weekly or monthly total during the current period. This is a one-time correction per legacy day (possibly spread across several refreshes), which Home Assistant's `total_increasing` statistics may interpret as a reset. Review affected long-term statistics in Developer Tools > Statistics; existing statistics are not rewritten automatically.
-
-## [1.2.0-beta.2] - 2026-10-19
+## [1.2.0] - 2026-10-20
 
 ### Added
+- Reconfigure flow: change the temperature source, base temperature and cooling/weekly/monthly options of an existing entry from the integration page, prefilled with the current settings (#126, fixes #125)
 - Renaming the temperature sensor is followed: the entry tracks the sensor's registry identity, keeps its stored daily values and entities, and waits for the recorder history migration (#146)
 - A per-entry Repairs notice when the source sensor is missing, cleared once it is back or reconfigured; missing days lower coverage instead of counting as zero (#146)
 - Diagnostics download with calculation settings, source availability, per-day coverage for the last 35 days and current period snapshots; identifying details are redacted (#143)
@@ -39,33 +18,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Contributor guide (`AGENTS.md`) and quality-scale checklist (#144)
 
 ### Fixed
-- Generated entry titles follow Home Assistant's language (English, French); existing titles are not renamed (#142)
-- Nearby base temperatures (e.g. 18.01 and 18.04) produce distinct generated titles (#142)
-
-## [1.2.0-beta.1] - 2026-10-19
-
-### Fixed
-- Weekly and monthly sensors now sum completed days of the current calendar period, resetting on Monday and on the 1st. Values and period labels share one snapshot, refreshed shortly after local midnight.
-- Missing completed days are backfilled from retained recorder history (up to seven dates per refresh). Coverage, missing-day counts and partial status expose remaining gaps; finalized days are cached, and partial days are retried every six hours while retained.
-- Integrate every recorder interval using the last known temperature, including the start-state and the final interval to midnight. Minute and subminute samples are no longer discarded.
-- Convert each recorded temperature from its own unit and preserve invalid/unavailable states as gaps. Recorder failures no longer appear as successful measurements.
-- Calculate a time-weighted daily mean and expose daily coverage and partial status. Use elapsed seconds on daylight-saving days and round only when displaying sensor values.
-- Reconfiguration preserves the entry's stored temperature unit and custom name, rejects invalid settings, and reloads the entry once. Deleting an entry removes only its own stored values; setup failures can be retried safely.
-
-### Added
-- Reconfigure flow: the temperature source, base temperature and cooling/weekly/monthly options of an existing entry can be changed from the integration page, prefilled with the current settings (#126, fixes #125)
+- Weekly and monthly sensors sum completed days of the current calendar period, resetting on Monday and on the 1st. Values and period labels share one snapshot, refreshed shortly after local midnight (#138)
+- Missing completed days are backfilled from retained recorder history (up to seven dates per refresh). Coverage, missing-day counts and partial status expose remaining gaps (#138)
+- Integrate every recorder interval using the last known temperature, including the start-state and the final interval to midnight. Minute and subminute samples are no longer discarded (#135)
+- Convert each recorded temperature from its own unit and preserve invalid/unavailable states as gaps. Recorder failures no longer appear as successful measurements (#135)
+- Bridge confirmed invalid temperature spans of up to 15 minutes by holding the preceding valid temperature, including interruptions that cross midnight. Longer or unresolved interruptions stay uncovered (#152)
+- Legacy daily values are recalculated once when Recorder provides a complete day; older partial/legacy records are retried once after a calculation revision (#150, #152)
+- The missing-source Repairs notice waits for Home Assistant startup and does not treat a registered sensor without a state yet as removed (#149)
+- Generated entry titles follow Home Assistant's language (English, French); nearby base temperatures produce distinct titles (#142)
+- Daily sensors use the `measurement` state class; weekly/monthly keep `total_increasing` (#154)
 
 ### Changed
-- Storage migrates to version 2 through a forward-only migration. Create a full Home Assistant backup before upgrading. Returning to an older integration version requires restoring the pre-upgrade stored data as well as the integration; downgrading the code alone is not supported.
-- Weekly/monthly sensors use `total_increasing`; daily sensors no longer have a state class. Entity IDs are preserved. Home Assistant may ask you to fix statistics once after the state-class/unit change in Developer Tools > Statistics; existing statistics are not rewritten automatically.
-- Daily storage now retains raw integrals, coverage and mean temperature. Legacy scalar values are preserved with assumed complete coverage, identified by `legacy_days`; absent legacy cooling values remain unknown. Source/base/unit changes invalidate this ledger and rebuild only the history still available in recorder, without recalculating existing Home Assistant long-term statistics.
-- Minimum Home Assistant version raised to 2025.1, matching the tested support floor
-- Sensor types turned off in the configuration now have their entities removed instead of being left behind as unavailable
-- Stored daily values carry the settings they were calculated with, and are reset when the temperature source, the base temperature or the unit changes
-- Local uv development replaces the obsolete devcontainer (#127); Home Assistant development overrides now survive `make ha-run`
-- Ruff updated to 0.16.6 (#128), CI actions updated (#111, #113, #118), and Dependabot uses native uv support with grouped tooling updates (#129)
-- CI verifies the actual Python and Home Assistant versions for the minimum, locked and latest-harness environments; pytest dependencies follow the harness, whose updates are managed separately from Dependabot
-- Releases use a manual checklist and English notes; version bumps refresh the lockfile, and release assets require matching tag/manifest/project versions and cannot overwrite existing assets
+- Storage migrates to version 2 through a forward-only migration. Create a full Home Assistant backup before upgrading. Returning to an older integration version requires restoring the pre-upgrade stored data as well as the integration; downgrading the code alone is not supported
+- Daily storage retains raw integrals, coverage and mean temperature. Legacy scalar values are preserved with assumed complete coverage (`legacy_days`). Source/base/unit changes invalidate this ledger and rebuild only history still available in recorder, without rewriting Home Assistant long-term statistics
+- Correcting legacy values can lower a weekly or monthly total once during the current period; Home Assistant's `total_increasing` statistics may interpret that as a reset. Review affected statistics in Developer Tools > Statistics
+- Minimum Home Assistant version raised to 2025.1
+- Sensor types turned off in the configuration have their entities removed instead of being left behind as unavailable
+- Local uv development replaces the obsolete devcontainer (#127); CI verifies actual Python/HA versions; Dependabot uses native uv support (#111, #113, #118, #128, #129, #134); releases use a checked manual process (#136)
 
 ## [1.1.0] - 2026-06-09
 
