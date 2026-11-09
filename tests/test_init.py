@@ -73,6 +73,43 @@ async def test_migrate_v1_entry_rewrites_unique_ids(
     assert migrated_weekly.unique_id == f"{entry.entry_id}_hdd_weekly"
 
 
+async def test_migrate_forecast_branch_ids_keep_entities(
+    recorder_mock, enable_custom_integrations, hass: HomeAssistant
+) -> None:
+    """V1 entries from the #63 branch had per-entry IDs: keep one entry prefix."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=1,
+        title="Heating Degree Days",
+        data={**ENTRY_DATA, "weather_entity": "weather.home"},
+    )
+    entry.add_to_hass(hass)
+    entity_registry = er.async_get(hass)
+    for sensor_type in ("hdd_daily", "hdd_estimated_today"):
+        entity_registry.async_get_or_create(
+            "sensor",
+            DOMAIN,
+            f"{DOMAIN}_{entry.entry_id}_{sensor_type}",
+            suggested_object_id=sensor_type,
+            config_entry=entry,
+        )
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.version == 2
+    for sensor_type in ("hdd_daily", "hdd_estimated_today"):
+        migrated = entity_registry.async_get(f"sensor.{sensor_type}")
+        assert migrated.unique_id == f"{entry.entry_id}_{sensor_type}"
+        # The sensor platform reuses the migrated entity instead of a new one.
+        assert hass.states.get(f"sensor.{sensor_type}") is not None
+    assert not [
+        e
+        for e in er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+        if e.unique_id.count(entry.entry_id) > 1
+    ]
+
+
 async def test_migrate_future_version_fails(
     recorder_mock, enable_custom_integrations, hass: HomeAssistant
 ) -> None:
@@ -184,7 +221,7 @@ async def test_stored_values_kept_when_settings_match(
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    coordinator = entry.runtime_data
+    coordinator = entry.runtime_data.coordinator
     assert coordinator.daily_hdd_values[date(2026, 9, 20)] == 4.2
 
 
@@ -201,5 +238,5 @@ async def test_stored_values_discarded_when_base_temperature_changed(
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    coordinator = entry.runtime_data
+    coordinator = entry.runtime_data.coordinator
     assert date(2026, 9, 20) not in coordinator.daily_hdd_values

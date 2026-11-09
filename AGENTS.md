@@ -13,8 +13,10 @@ framework of ports, adapters or services around simple calculations.
 - `history.py`: recorder access, temperature-unit normalization and invalid-state gaps.
 - `periods.py`: pure daily ledger records, local-day boundaries and calendar aggregation.
 - `coordinator.py`: per-entry Store, bounded backfill and consistent value/metadata snapshots.
+- `forecast.py`: optional `weather.get_forecasts` adapter and estimate coordinator for
+  today/tomorrow; never feeds the ledger or historical availability.
 - `config_flow.py`: UI setup/reconfiguration and input validation. Persist the entry's unit.
-- `__init__.py`: setup, migration, unloading and removal. Store the coordinator in typed `HDDConfigEntry.runtime_data`.
+- `__init__.py`: setup, migration, unloading and removal. Store `HDDRuntimeData` in typed `HDDConfigEntry.runtime_data`.
 - `sensor.py`: thin presentation layer; create entities with `const.get_enabled_sensor_types`, also used for registry cleanup.
 
 Preserve entity unique IDs, config-entry version-2 migration and per-entry storage
@@ -42,9 +44,10 @@ Register listeners and timers with their lifecycle owner, including
 - Weekly/monthly use `total_increasing`; daily uses `measurement` (keeps long-term
   statistics of a value that changes once per day). Explain
   statistics and migration changes in CHANGELOG; do not rewrite HA history silently.
-- Minimum supported Home Assistant: **2025.1**. Stable 1.2.0 requires all planned
-  calculation fixes. Forecasts are post-1.2.0 and use calendar today/tomorrow,
-  not rolling 24/48-hour windows.
+- Minimum supported Home Assistant: **2025.1**. Forecast estimates use calendar
+  today/tomorrow, not rolling 24/48-hour windows. Forecast points hold until the
+  next point within `FORECAST_MAX_INTERVAL`; the final point holds the preceding
+  accepted spacing. Partial estimates are never scaled up.
 
 ## Development and validation
 

@@ -34,6 +34,7 @@ If you download GitHub's source archive instead, copy its
    - Set the base temperature (defaults are 18°C or 65°F)
    - Enable/disable Cooling Degree Days calculation
    - Choose whether to include weekly and monthly sensors
+   - Optionally select a weather entity with hourly forecasts for today's and tomorrow's estimates
 
 ### Changing the settings later
 
@@ -42,7 +43,9 @@ If you download GitHub's source archive instead, copy its
 3. The form is prefilled with the current settings; change what you need
 
 Entity IDs and history are preserved. Turning off the cooling, weekly or monthly
-sensors removes the matching entities. Changing the temperature source, the base
+sensors removes the matching entities, and so does clearing the weather entity
+for the estimate sensors. Adding, changing or removing the weather entity keeps
+the stored daily values. Changing the temperature source, the base
 temperature or the unit invalidates the stored daily values, so they are reset
 instead of being mixed with values calculated under the previous settings, and
 the weekly and monthly totals rebuild in bounded batches from history still
@@ -164,11 +167,34 @@ The integration creates the following sensors depending on your configuration:
 - `sensor.cdd_weekly`: CDD for the current week (optional)
 - `sensor.cdd_monthly`: CDD for the current month (optional)
 
+### Estimate sensors (when a weather entity is selected):
+- `sensor.hdd_estimated_today` / `sensor.cdd_estimated_today`: today's calendar day, observed temperatures until now plus the hourly forecast for the rest of the day
+- `sensor.hdd_estimated_tomorrow` / `sensor.cdd_estimated_tomorrow`: tomorrow's calendar day from the hourly forecast alone
+
+CDD estimates require cooling to be enabled. Estimates are separate from the
+daily, weekly and monthly sensors and never enter their totals. They expose
+`coverage`, `partial`, `date`, `period_start`, `period_end`, `as_of`,
+`forecast_retrieved_at`, `forecast_source`, `mean_temperature` and `reason`.
+A partial value is only the covered part of the day, never scaled up. Without
+any usable data the state is `unknown` and `reason` says why
+(`forecast_failed`, `forecast_expired`, `forecast_unsupported`,
+`weather_missing`, `recorder_failed`, `source_missing`, `no_coverage`).
+
+Forecasts are fetched with `weather.get_forecasts` (`type: hourly`) at setup,
+then hourly, and when the weather entity changes state (at most every five
+minutes). A forecast is used for at most two hours after retrieval. Points up
+to three hours apart hold until the next point; a final or isolated point holds
+for the preceding accepted spacing (one hour without one). Estimates are
+recomputed every five minutes and shortly after local midnight. A missing
+weather entity or one without hourly forecasts creates a Repairs notice;
+historical sensors are never affected by forecast problems.
+
 ## Time Periods
 
 - **Daily**: Represents the previous completed day
 - **Weekly**: Represents the current week from Monday to Sunday
 - **Monthly**: Represents the current month from 1st to last day
+- **Estimated today / tomorrow**: local calendar days (midnight to midnight), not rolling 24/48-hour windows
 
 ## Example Usage
 

@@ -84,7 +84,7 @@ async def test_rename_keeps_ledger_and_entity_ids_with_one_reload(hass, hass_sto
     with patch(HISTORY, side_effect=full_day) as history:
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done(wait_background_tasks=True)
-        ledger = dict(entry.runtime_data.ledger)
+        ledger = dict(entry.runtime_data.coordinator.ledger)
         registry = er.async_get(hass)
         output_ids = {
             entity.entity_id
@@ -103,8 +103,8 @@ async def test_rename_keeps_ledger_and_entity_ids_with_one_reload(hass, hass_sto
         assert history.await_count == 2  # Completed dates are not queried again.
     assert entry.data["temperature_sensor"] == "sensor.renamed"
     assert entry.data[CONF_SOURCE_REGISTRY_ID] == source.id
-    assert entry.runtime_data.ledger == ledger
-    assert entry.runtime_data.temp_entity == "sensor.renamed"
+    assert entry.runtime_data.coordinator.ledger == ledger
+    assert entry.runtime_data.coordinator.temp_entity == "sensor.renamed"
     assert issue(hass, entry) is None
     assert output_ids == {
         entity.entity_id
@@ -129,32 +129,34 @@ async def test_missing_source_retains_values_and_restoration_clears_repair(
     with patch(HISTORY, side_effect=full_day) as history:
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done(wait_background_tasks=True)
-        before = dict(entry.runtime_data.data)
+        before = dict(entry.runtime_data.coordinator.data)
         er.async_get(hass).async_remove(source.entity_id)
         hass.states.async_remove(source.entity_id)
         await hass.async_block_till_done(wait_background_tasks=True)
         assert issue(hass, entry).translation_key == "missing_source"
         assert issue(hass, other) is None
         history.reset_mock()
-        await entry.runtime_data.async_refresh()
+        await entry.runtime_data.coordinator.async_refresh()
         history.assert_not_awaited()
-        assert entry.runtime_data.data == before
-        assert entry.runtime_data.last_update_success
+        assert entry.runtime_data.coordinator.data == before
+        assert entry.runtime_data.coordinator.last_update_success
         freezer.move_to("2026-06-04 12:00:00+00:00")
-        await entry.runtime_data.async_refresh()
-        assert entry.runtime_data.data["hdd_daily"] is None
-        assert entry.runtime_data.data["hdd_monthly"] == 16
-        attrs = entry.runtime_data.period_attributes["hdd_monthly"]
+        await entry.runtime_data.coordinator.async_refresh()
+        assert entry.runtime_data.coordinator.data["hdd_daily"] is None
+        assert entry.runtime_data.coordinator.data["hdd_monthly"] == 16
+        attrs = entry.runtime_data.coordinator.period_attributes["hdd_monthly"]
         assert attrs["coverage"] == 2 / 3
         assert attrs["partial"] and attrs["source_missing"]
         assert attrs["missing_days"] == 1
         restored = add_source(hass)
         assert restored.id == source.id
         await hass.async_block_till_done(wait_background_tasks=True)
-        await entry.runtime_data.async_refresh()
+        await entry.runtime_data.coordinator.async_refresh()
         assert issue(hass, entry) is None
-        assert entry.runtime_data.data["hdd_daily"] == 8
-        assert not entry.runtime_data.period_attributes["hdd_monthly"]["source_missing"]
+        assert entry.runtime_data.coordinator.data["hdd_daily"] == 8
+        assert not entry.runtime_data.coordinator.period_attributes["hdd_monthly"][
+            "source_missing"
+        ]
 
 
 @pytest.mark.freeze_time("2026-06-03 12:00:00+00:00")
@@ -168,8 +170,8 @@ async def test_missing_at_setup_reconfigure_and_remove_clear_issue(hass):
         history.assert_not_awaited()
         assert issue(hass, entry) is not None
         assert issue(hass, other) is not None
-        assert entry.runtime_data.data["hdd_daily"] is None
-        assert entry.runtime_data.last_update_success
+        assert entry.runtime_data.coordinator.data["hdd_daily"] is None
+        assert entry.runtime_data.coordinator.last_update_success
         source = add_source(hass)
         flow = await entry.start_reconfigure_flow(hass)
         await hass.config_entries.flow.async_configure(
@@ -195,7 +197,7 @@ async def test_unload_removes_listeners_and_reload_resolves_offline_rename(hass)
     with patch(HISTORY, side_effect=full_day):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done(wait_background_tasks=True)
-        ledger = dict(entry.runtime_data.ledger)
+        ledger = dict(entry.runtime_data.coordinator.ledger)
         assert await hass.config_entries.async_unload(entry.entry_id)
         with patch.object(hass.config_entries, "async_reload") as reload:
             er.async_get(hass).async_update_entity(
@@ -210,7 +212,7 @@ async def test_unload_removes_listeners_and_reload_resolves_offline_rename(hass)
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done(wait_background_tasks=True)
         assert entry.data["temperature_sensor"] == "sensor.new"
-        assert entry.runtime_data.ledger == ledger
+        assert entry.runtime_data.coordinator.ledger == ledger
 
 
 @pytest.mark.freeze_time("2026-06-03 12:00:00+00:00")
@@ -235,13 +237,13 @@ async def test_legacy_fingerprint_is_migrated_before_rename(hass, hass_storage):
     with patch(HISTORY, return_value=TemperatureHistory((), None, 0)):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done(wait_background_tasks=True)
-        assert entry.runtime_data.ledger[date(2026, 6, 2)].hdd == 12.5
+        assert entry.runtime_data.coordinator.ledger[date(2026, 6, 2)].hdd == 12.5
         er.async_get(hass).async_update_entity(
             source.entity_id, new_entity_id="sensor.new"
         )
         hass.states.async_set("sensor.new", "10", ATTRS)
         await hass.async_block_till_done(wait_background_tasks=True)
-        assert entry.runtime_data.ledger[date(2026, 6, 2)].hdd == 12.5
+        assert entry.runtime_data.coordinator.ledger[date(2026, 6, 2)].hdd == 12.5
 
 
 @pytest.mark.freeze_time("2026-01-01 22:00:00+00:00")
@@ -302,7 +304,7 @@ async def test_late_registry_identity_preserves_ledger_on_rename(hass):
     with patch(HISTORY, side_effect=full_day):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done(wait_background_tasks=True)
-        ledger = dict(entry.runtime_data.ledger)
+        ledger = dict(entry.runtime_data.coordinator.ledger)
         registry = er.async_get(hass)
         hass.states.async_remove("sensor.late")
         source = registry.async_get_or_create(
@@ -313,7 +315,7 @@ async def test_late_registry_identity_preserves_ledger_on_rename(hass):
         hass.states.async_remove(source.entity_id)
         hass.states.async_set("sensor.renamed", "10", ATTRS)
         await hass.async_block_till_done(wait_background_tasks=True)
-        assert entry.runtime_data.ledger == ledger
+        assert entry.runtime_data.coordinator.ledger == ledger
         assert entry.data[CONF_SOURCE_REGISTRY_ID] == source.id
 
 
@@ -399,7 +401,7 @@ async def test_startup_does_not_report_or_suspend_stateless_source(hass, registe
     with patch(HISTORY, side_effect=full_day) as history:
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done(wait_background_tasks=True)
-        coordinator = entry.runtime_data
+        coordinator = entry.runtime_data.coordinator
         assert history.await_count == 2
         assert coordinator.data["hdd_monthly"] == 16
         assert coordinator.period_attributes["hdd_monthly"]["coverage"] == 1
@@ -433,11 +435,11 @@ async def test_missing_source_checked_at_start_and_cleared_on_return(hass):
         hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
         await hass.async_block_till_done(wait_background_tasks=True)
         assert issue(hass, entry) is not None
-        assert entry.runtime_data.source_missing
+        assert entry.runtime_data.coordinator.source_missing
         hass.states.async_set("sensor.missing", "10", ATTRS)
         await hass.async_block_till_done(wait_background_tasks=True)
         assert issue(hass, entry) is None
-        assert not entry.runtime_data.source_missing
+        assert not entry.runtime_data.coordinator.source_missing
 
 
 @pytest.mark.freeze_time("2026-06-03 12:00:00+00:00")
@@ -457,21 +459,21 @@ async def test_registered_stateless_source_clears_stale_issue_without_new_repair
     with patch(HISTORY, side_effect=full_day) as history:
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done(wait_background_tasks=True)
-        ledger = dict(entry.runtime_data.ledger)
+        ledger = dict(entry.runtime_data.coordinator.ledger)
         hass.state = CoreState.running
         hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
         await hass.async_block_till_done(wait_background_tasks=True)
         assert issue(hass, entry) is None
-        assert entry.runtime_data.source_missing
+        assert entry.runtime_data.coordinator.source_missing
         history.reset_mock()
-        await entry.runtime_data.async_refresh()
+        await entry.runtime_data.coordinator.async_refresh()
         history.assert_not_awaited()
-        assert entry.runtime_data.ledger == ledger
+        assert entry.runtime_data.coordinator.ledger == ledger
         assert issue(hass, entry) is None
         hass.states.async_set(source.entity_id, "10", ATTRS)
         await hass.async_block_till_done(wait_background_tasks=True)
         assert issue(hass, entry) is None
-        assert not entry.runtime_data.source_missing
+        assert not entry.runtime_data.coordinator.source_missing
 
 
 async def test_unload_before_start_cancels_first_source_check(hass):
@@ -496,7 +498,7 @@ async def test_already_running_stateless_registered_source_does_not_need_repair(
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done(wait_background_tasks=True)
         history.assert_not_awaited()
-        assert entry.runtime_data.source_missing
+        assert entry.runtime_data.coordinator.source_missing
         assert issue(hass, entry) is None
 
 
@@ -512,7 +514,7 @@ async def test_source_status_is_published_immediately_without_waiting_for_backfi
     with patch(HISTORY, side_effect=full_day):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done(wait_background_tasks=True)
-    coordinator = entry.runtime_data
+    coordinator = entry.runtime_data.coordinator
     entities = er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
     before = dict(coordinator.data)
     if previous_failure:
@@ -559,7 +561,7 @@ async def test_refresh_repairs_stale_source_metadata_even_when_totals_unchanged(
     with patch(HISTORY, side_effect=full_day):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done(wait_background_tasks=True)
-    coordinator = entry.runtime_data
+    coordinator = entry.runtime_data.coordinator
     before = dict(coordinator.data)
     coordinator.source_missing = False
     coordinator.period_attributes = {

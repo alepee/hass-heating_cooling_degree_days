@@ -25,6 +25,7 @@ from .const import (
     CONF_INCLUDE_WEEKLY,
     CONF_TEMPERATURE_SENSOR,
     CONF_TEMPERATURE_UNIT,
+    CONF_WEATHER_ENTITY,
     DEFAULT_INCLUDE_COOLING,
     DEFAULT_INCLUDE_MONTHLY,
     DEFAULT_INCLUDE_WEEKLY,
@@ -36,6 +37,7 @@ from .source import CONF_SOURCE_REGISTRY_ID
 
 TO_REDACT = {
     CONF_TEMPERATURE_SENSOR,
+    CONF_WEATHER_ENTITY,
     CONF_SOURCE_REGISTRY_ID,
     "entity_id",
     "unique_id",
@@ -67,7 +69,9 @@ async def async_get_config_entry_diagnostics(
     # Do not export arbitrary source attributes or free-form state strings.
     if source_unit not in set(UnitOfTemperature):
         source_unit = None
-    coordinator = getattr(entry, "runtime_data", None)
+    runtime = getattr(entry, "runtime_data", None)
+    coordinator = runtime.coordinator if runtime else None
+    forecast = runtime.forecast if runtime else None
     result = {
         "versions": {"home_assistant": HA_VERSION, "integration": integration.version},
         "entry": async_redact_data(
@@ -82,6 +86,7 @@ async def async_get_config_entry_diagnostics(
                     entry.data.get(CONF_INCLUDE_COOLING, DEFAULT_INCLUDE_COOLING),
                     entry.data.get(CONF_INCLUDE_WEEKLY, DEFAULT_INCLUDE_WEEKLY),
                     entry.data.get(CONF_INCLUDE_MONTHLY, DEFAULT_INCLUDE_MONTHLY),
+                    bool(entry.data.get(CONF_WEATHER_ENTITY)),
                 )
             ),
         },
@@ -89,7 +94,33 @@ async def async_get_config_entry_diagnostics(
         "refresh": {"last_update_success": None, "last_attempt": None},
         "ledger": None,
         "periods": {},
+        "forecast": {"configured": bool(entry.data.get(CONF_WEATHER_ENTITY))},
     }
+    if forecast is not None:
+        payload = forecast.payload
+        snapshot = forecast.data
+        result["forecast"].update(
+            {
+                "last_update_success": forecast.last_update_success,
+                "reason": forecast.forecast_reason,
+                "retrieved_at": payload.retrieved_at.isoformat() if payload else None,
+                "point_count": payload.point_count if payload else None,
+                "estimates": {
+                    name: {
+                        "date": estimate.day.isoformat(),
+                        "hdd": estimate.value("hdd"),
+                        "cdd": estimate.value("cdd"),
+                        "coverage": estimate.coverage,
+                        "reasons": list(estimate.reasons),
+                    }
+                    for name, estimate in (
+                        (("today", snapshot.today), ("tomorrow", snapshot.tomorrow))
+                        if snapshot
+                        else ()
+                    )
+                },
+            }
+        )
     if coordinator is None:
         return result
 

@@ -7,6 +7,7 @@
         "data": {
           "name": "Name",
           "temperature_sensor": "Outdoor Temperature Sensor",
+          "weather_entity": "Weather Forecast (optional)",
           "base_temperature": "Base Temperature",
           "include_cooling": "Include Cooling Degree Days (CDD)",
           "include_weekly": "Include Weekly Sensors",
@@ -14,7 +15,8 @@
         },
         "data_description": {
           "name": "Optional. Used as the entry title and device name. If left empty, a name is derived from the base temperature, e.g. \"Heating Degree Days (18.0°C)\".",
-          "base_temperature": "The default base temperature is 18°C for Celsius or 65°F for Fahrenheit, depending on your unit system"
+          "base_temperature": "The default base temperature is 18°C for Celsius or 65°F for Fahrenheit, depending on your unit system",
+          "weather_entity": "Optional. A weather entity with hourly forecasts, used for today's and tomorrow's estimates. Clear it to remove the estimate sensors."
         }
       },
       "reconfigure": {
@@ -23,6 +25,7 @@
         "data": {
           "name": "Name",
           "temperature_sensor": "Outdoor Temperature Sensor",
+          "weather_entity": "Weather Forecast (optional)",
           "base_temperature": "Base Temperature",
           "include_cooling": "Include Cooling Degree Days (CDD)",
           "include_weekly": "Include Weekly Sensors",
@@ -30,13 +33,15 @@
         },
         "data_description": {
           "name": "Used as the entry title and device name. If left empty, a name is derived from the base temperature, e.g. “Heating Degree Days (18.0°C)”.",
-          "base_temperature": "The unit saved for this entry is preserved when Home Assistant’s unit system changes."
+          "base_temperature": "The unit saved for this entry is preserved when Home Assistant’s unit system changes.",
+          "weather_entity": "Optional. A weather entity with hourly forecasts, used for today's and tomorrow's estimates. Clear it to remove the estimate sensors."
         }
       }
     },
     "error": {
       "invalid_temperature_sensor": "Select an existing sensor with a temperature device class or a temperature unit (°C, °F or K).",
-      "invalid_base_temperature": "Enter a finite number for the base temperature."
+      "invalid_base_temperature": "Enter a finite number for the base temperature.",
+      "invalid_weather_entity": "Select an existing weather entity that provides hourly forecasts."
     },
     "abort": {
       "already_configured": "An entry with this temperature sensor and base temperature already exists.",
@@ -62,6 +67,18 @@
       },
       "cdd_monthly": {
         "name": "CDD Monthly"
+      },
+      "hdd_estimated_today": {
+        "name": "HDD Estimated Today"
+      },
+      "hdd_estimated_tomorrow": {
+        "name": "HDD Estimated Tomorrow"
+      },
+      "cdd_estimated_today": {
+        "name": "CDD Estimated Today"
+      },
+      "cdd_estimated_tomorrow": {
+        "name": "CDD Estimated Tomorrow"
       }
     }
   },
@@ -73,6 +90,14 @@
     "missing_source": {
       "title": "Temperature source missing: {name}",
       "description": "The source sensor `{entity_id}` for {name} no longer exists. Previously calculated degree days are retained; missing days remain incomplete. Restore the source, or open [Heating & Cooling Degree Days]({url}), select the three-dot menu for this entry, and choose **Reconfigure** to select another temperature sensor."
+    },
+    "weather_missing": {
+      "title": "Weather forecast source missing: {name}",
+      "description": "The weather entity `{entity_id}` used for the degree-day estimates of {name} no longer exists. Historical sensors are not affected; estimates only include observed temperatures. Restore the entity, or open [Heating & Cooling Degree Days]({url}), select the three-dot menu for this entry, and choose **Reconfigure** to select another weather entity or remove it."
+    },
+    "forecast_unsupported": {
+      "title": "Hourly forecasts unavailable: {name}",
+      "description": "The weather entity `{entity_id}` used for the degree-day estimates of {name} does not provide hourly forecasts. Historical sensors are not affected. Open [Heating & Cooling Degree Days]({url}), select the three-dot menu for this entry, and choose **Reconfigure** to select a weather entity with hourly forecasts or remove it."
     }
   }
 }

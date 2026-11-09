@@ -254,7 +254,7 @@ async def test_midnight_listener_requests_refresh_and_is_cancelled_on_unload(has
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
     assert track.call_args.kwargs == {"hour": 0, "minute": 0, "second": 5}
-    coordinator = entry.runtime_data
+    coordinator = entry.runtime_data.coordinator
     with patch.object(
         coordinator, "async_request_refresh", new_callable=AsyncMock
     ) as refresh:

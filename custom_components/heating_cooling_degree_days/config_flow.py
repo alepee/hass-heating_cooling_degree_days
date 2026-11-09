@@ -20,6 +20,7 @@ from .const import (
     CONF_INCLUDE_WEEKLY,
     CONF_TEMPERATURE_SENSOR,
     CONF_TEMPERATURE_UNIT,
+    CONF_WEATHER_ENTITY,
     DEFAULT_BASE_TEMPERATURE_CELSIUS,
     DEFAULT_INCLUDE_COOLING,
     DEFAULT_INCLUDE_MONTHLY,
@@ -30,6 +31,11 @@ from .const import (
     MAP_DEFAULT_BASE_TEMPERATURE,
 )
 from .coordinator import async_remove_stored_data
+from .forecast import (
+    ATTR_SUPPORTED_FEATURES,
+    FEATURE_FORECAST_HOURLY,
+    async_clear_forecast_issue,
+)
 from .source import CONF_SOURCE_REGISTRY_ID, async_clear_source_issue
 
 _LOGGER = logging.getLogger(__name__)
@@ -108,6 +114,7 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     await async_remove_stored_data(self.hass, entry.entry_id)
 
                 async_clear_source_issue(self.hass, entry.entry_id)
+                async_clear_forecast_issue(self.hass, entry.entry_id)
 
                 # The loaded entry's update listener owns the reload. Updating
                 # directly also supports HA 2025.1 (no async_update_and_abort).
@@ -148,6 +155,12 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         domain=["sensor"],
                     ),
                 ),
+                vol.Optional(
+                    CONF_WEATHER_ENTITY,
+                    description={"suggested_value": current.get(CONF_WEATHER_ENTITY)},
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain=["weather"]),
+                ),
                 vol.Required(
                     CONF_BASE_TEMPERATURE,
                     default=current.get(
@@ -173,7 +186,12 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any], entry: ConfigEntry | None = None
     ) -> dict[str, Any]:
         """Turn the submitted form into entry data (the name is not part of it)."""
-        data = {k: v for k, v in user_input.items() if k != CONF_NAME}
+        # An omitted or cleared weather entity removes the forecast estimates.
+        data = {
+            k: v
+            for k, v in user_input.items()
+            if k != CONF_NAME and not (k == CONF_WEATHER_ENTITY and not v)
+        }
         # Reconfiguration always displays and preserves the entry's stored unit.
         data[CONF_TEMPERATURE_UNIT] = (
             entry.data[CONF_TEMPERATURE_UNIT]
@@ -262,7 +280,22 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "invalid_temperature_sensor"
         if not math.isfinite(user_input[CONF_BASE_TEMPERATURE]):
             errors[CONF_BASE_TEMPERATURE] = "invalid_base_temperature"
+        weather = user_input.get(CONF_WEATHER_ENTITY)
+        if weather and not self._validate_weather(weather):
+            errors[CONF_WEATHER_ENTITY] = "invalid_weather_entity"
         return errors
+
+    def _validate_weather(self, entity_id: str) -> bool:
+        """Require an existing weather entity that provides hourly forecasts."""
+        state = self.hass.states.get(entity_id)
+        return (
+            state is not None
+            and state.domain == "weather"
+            and bool(
+                (state.attributes.get(ATTR_SUPPORTED_FEATURES) or 0)
+                & FEATURE_FORECAST_HOURLY
+            )
+        )
 
     def _validate_sensor(self, entity_id: str) -> bool:
         """Require an existing sensor with a temperature class or unit."""
