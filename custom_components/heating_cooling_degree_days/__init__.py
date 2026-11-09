@@ -60,6 +60,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             """Rewrite static v1 unique_ids to per-entry unique_ids."""
             if entity_entry.unique_id.startswith(old_prefix):
                 sensor_type = entity_entry.unique_id.removeprefix(old_prefix)
+                # The unreleased forecast branch (#63) already stored per-entry
+                # IDs in version 1; keep one entry prefix rather than two.
+                sensor_type = sensor_type.removeprefix(f"{entry.entry_id}_")
                 return {"new_unique_id": f"{entry.entry_id}_{sensor_type}"}
             # Already migrated or unknown format: leave untouched
             return None
