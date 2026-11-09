@@ -2,7 +2,7 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from math import isfinite
 
 SECONDS_PER_DAY = 86400
@@ -119,4 +119,57 @@ def integrate_degree_days(
         mean_temp=(
             temperature_seconds / coverage_seconds if coverage_seconds else None
         ),
+    )
+
+
+def forecast_samples(
+    points: Iterable[tuple[datetime, float | None]],
+    step_seconds: float,
+    max_interval_seconds: float,
+) -> tuple[TemperatureSample, ...]:
+    """Turn forecast points into held samples with explicit validity limits.
+
+    Each point holds until the next timestamp when the spacing is at most
+    max_interval_seconds. Otherwise, and for the final point, it holds for the
+    preceding accepted spacing (one nominal step without one), followed by a
+    gap: no coverage is invented beyond the accepted interval or the horizon.
+    Equal timestamps use the last supplied point; invalid temperatures are gaps
+    until the next point.
+    """
+    if not 0 < step_seconds <= max_interval_seconds:
+        raise ValueError("The forecast step must be positive and within the limit")
+    by_timestamp = {_timestamp(when): temperature for when, temperature in points}
+    ordered = sorted(by_timestamp.items())
+    samples = []
+    spacing = step_seconds
+    for index, (timestamp, temperature) in enumerate(ordered):
+        if temperature is not None and not isfinite(temperature):
+            temperature = None
+        when = datetime.fromtimestamp(timestamp, UTC)
+        samples.append(TemperatureSample(when, temperature))
+        following = ordered[index + 1][0] if index + 1 < len(ordered) else None
+        if following is not None and following - timestamp <= max_interval_seconds:
+            spacing = following - timestamp
+            continue
+        expiry = datetime.fromtimestamp(timestamp + spacing, UTC)
+        samples.append(TemperatureSample(expiry, None))
+        spacing = step_seconds
+    return tuple(samples)
+
+
+def combine_results(parts: Iterable[DayResult], window_seconds: float) -> DayResult:
+    """Sum disjoint window contributions; weight the mean by covered time."""
+    hdd = cdd = covered = temperature_seconds = 0.0
+    for part in parts:
+        hdd += part.hdd
+        cdd += part.cdd
+        covered += part.coverage_seconds
+        if part.mean_temp is not None:
+            temperature_seconds += part.mean_temp * part.coverage_seconds
+    return DayResult(
+        hdd=hdd,
+        cdd=cdd,
+        coverage_seconds=covered,
+        window_seconds=window_seconds,
+        mean_temp=temperature_seconds / covered if covered else None,
     )

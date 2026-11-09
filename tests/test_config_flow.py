@@ -491,7 +491,7 @@ async def test_reconfigure_preserves_stored_unit_after_system_change(
     assert result["reason"] == "reconfigure_successful"
     assert entry.data[CONF_BASE_TEMPERATURE] == base_temp
     assert entry.data[CONF_TEMPERATURE_UNIT] == entry_unit
-    assert entry.runtime_data.temperature_unit == entry_unit
+    assert entry.runtime_data.coordinator.temperature_unit == entry_unit
     remove_stored.assert_not_awaited()
 
 

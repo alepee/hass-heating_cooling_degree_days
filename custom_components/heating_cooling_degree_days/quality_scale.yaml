@@ -53,7 +53,7 @@ rules:
     comment: DegreeDegreeSensor sets _attr_has_entity_name and a translation key.
   runtime-data:
     status: done
-    comment: __init__.py defines HDDConfigEntry and assigns the coordinator to entry.runtime_data; sensor.py reads it.
+    comment: __init__.py defines HDDConfigEntry with an HDDRuntimeData container (historical coordinator, optional forecast coordinator); sensor.py and diagnostics.py read it.
   test-before-configure:
     status: done
     comment: config_flow.py validates an existing temperature-class/unit sensor and finite base temperature; no external connection is involved.
@@ -156,7 +156,7 @@ rules:
     comment: config_flow.py provides async_step_reconfigure with validation, duplicate guards, stored-unit preservation and reload tests.
   repair-issues:
     status: todo
-    comment: Deleted/misconfigured sources do not yet create user-actionable repair issues.
+    comment: Per-entry issues exist for a missing temperature source and for a missing/non-hourly weather source, resolved by reconfiguration; there is no repair flow yet.
   stale-devices:
     status: exempt
     comment: No remote inventory can disappear; the single service device is tied to its config entry and removed with it.

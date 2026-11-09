@@ -1,5 +1,6 @@
 """The Heating & Cooling Degree Days integration."""
 
+from dataclasses import dataclass
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -15,21 +16,32 @@ from .const import (
     CONF_INCLUDE_WEEKLY,
     CONF_TEMPERATURE_SENSOR,
     CONF_TEMPERATURE_UNIT,
+    CONF_WEATHER_ENTITY,
     DEFAULT_INCLUDE_COOLING,
     DEFAULT_INCLUDE_MONTHLY,
     DEFAULT_INCLUDE_WEEKLY,
     DOMAIN,
-    HISTORICAL_SENSOR_TYPES,
+    MANAGED_SENSOR_TYPES,
     get_enabled_sensor_types,
 )
 from .coordinator import HDDDataUpdateCoordinator, async_remove_stored_data
+from .forecast import ForecastCoordinator, async_clear_forecast_issue
 from .source import SourceTracker, async_clear_source_issue
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.SENSOR]
 
-type HDDConfigEntry = ConfigEntry[HDDDataUpdateCoordinator]
+
+@dataclass(slots=True)
+class HDDRuntimeData:
+    """Per-entry runtime state; forecast estimates are optional and independent."""
+
+    coordinator: HDDDataUpdateCoordinator
+    forecast: ForecastCoordinator | None = None
+
+
+type HDDConfigEntry = ConfigEntry[HDDRuntimeData]
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -101,7 +113,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: HDDConfigEntry) -> bool:
     # Let HA handle ConfigEntryNotReady and authentication/setup failures.
     await coordinator.async_config_entry_first_refresh()
 
-    entry.runtime_data = coordinator
+    forecast = None
+    if weather_entity := entry.data.get(CONF_WEATHER_ENTITY):
+        forecast = ForecastCoordinator(
+            hass,
+            entry=entry,
+            weather_entity=weather_entity,
+            temp_entity=source.entity_id,
+            base_temp=entry.data[CONF_BASE_TEMPERATURE],
+            temperature_unit=entry.data[CONF_TEMPERATURE_UNIT],
+            source_missing=lambda: coordinator.source_missing,
+        )
+        # Estimates never block setup: failures become reasons, not errors.
+        await forecast.async_refresh()
+    else:
+        async_clear_forecast_issue(hass, entry.entry_id)
+
+    entry.runtime_data = HDDRuntimeData(coordinator, forecast)
     setup_complete = False
     try:
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -111,7 +139,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: HDDConfigEntry) -> bool:
         _async_remove_disabled_entities(
             hass,
             entry,
-            get_enabled_sensor_types(include_cooling, include_weekly, include_monthly),
+            get_enabled_sensor_types(
+                include_cooling, include_weekly, include_monthly, forecast is not None
+            ),
         )
 
         # This listener owns reloads, including title changes and reconfiguration.
@@ -122,6 +152,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: HDDConfigEntry) -> bool:
             )
         )
         source.async_track(coordinator)
+        if forecast is not None:
+            forecast.async_track()
         setup_complete = True
     finally:
         if not setup_complete:
@@ -150,7 +182,7 @@ def _async_remove_disabled_entities(
         ):
             continue
         sensor_type = entity_entry.unique_id.removeprefix(prefix)
-        if sensor_type in HISTORICAL_SENSOR_TYPES and sensor_type not in enabled_types:
+        if sensor_type in MANAGED_SENSOR_TYPES and sensor_type not in enabled_types:
             _LOGGER.info(
                 "Removing %s: sensor type %s is disabled in the configuration",
                 entity_entry.entity_id,
@@ -184,4 +216,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: HDDConfigEntry) -> bool
 async def async_remove_entry(hass: HomeAssistant, entry: HDDConfigEntry) -> None:
     """Remove only this entry's persistent history when the entry is deleted."""
     async_clear_source_issue(hass, entry.entry_id)
+    async_clear_forecast_issue(hass, entry.entry_id)
     await async_remove_stored_data(hass, entry.entry_id)

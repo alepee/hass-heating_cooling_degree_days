@@ -15,11 +15,13 @@ from . import HDDConfigEntry
 from .const import (
     ATTR_BASE_TEMPERATURE,
     DOMAIN,
+    FORECAST_SENSOR_TYPES,
     SENSOR_TYPE_CDD_DAILY,
     SENSOR_TYPE_HDD_DAILY,
     get_enabled_sensor_types,
 )
 from .coordinator import HDDDataUpdateCoordinator
+from .forecast import ForecastCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,7 +32,8 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the HDD and CDD sensors."""
-    coordinator = entry.runtime_data
+    coordinator = entry.runtime_data.coordinator
+    forecast = entry.runtime_data.forecast
 
     _LOGGER.info(
         "Setting up degree days sensors with temperature sensor %s and base temperature %.1f°%s",
@@ -39,14 +42,17 @@ async def async_setup_entry(
         coordinator.temperature_unit,
     )
 
-    sensors = [
-        DegreeDegreeSensor(coordinator, entry, sensor_type)
-        for sensor_type in get_enabled_sensor_types(
-            coordinator.include_cooling,
-            coordinator.include_weekly,
-            coordinator.include_monthly,
-        )
-    ]
+    sensors: list[SensorEntity] = []
+    for sensor_type in get_enabled_sensor_types(
+        coordinator.include_cooling,
+        coordinator.include_weekly,
+        coordinator.include_monthly,
+        forecast is not None,
+    ):
+        if sensor_type in FORECAST_SENSOR_TYPES:
+            sensors.append(EstimateSensor(forecast, entry, sensor_type))
+        else:
+            sensors.append(DegreeDegreeSensor(coordinator, entry, sensor_type))
 
     async_add_entities(sensors)
     _LOGGER.info("Added %d degree days sensors", len(sensors))
@@ -126,4 +132,70 @@ class DegreeDegreeSensor(CoordinatorEntity, SensorEntity):
         return {
             ATTR_BASE_TEMPERATURE: self.coordinator.base_temp,
             **self.coordinator.period_attributes.get(self.sensor_type, {}),
+        }
+
+
+class EstimateSensor(CoordinatorEntity[ForecastCoordinator], SensorEntity):
+    """Today's or tomorrow's estimate; never part of completed-day totals."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: ForecastCoordinator,
+        entry: HDDConfigEntry,
+        sensor_type: str,
+    ) -> None:
+        """Initialize the estimate sensor (no state class: no statistics)."""
+        super().__init__(coordinator)
+        self.sensor_type = sensor_type
+        self._metric, _, self._day = sensor_type.partition("_estimated_")
+        self._attr_unique_id = f"{entry.entry_id}_{sensor_type}"
+        self._attr_translation_key = sensor_type
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=entry.title,
+            entry_type=DeviceEntryType.SERVICE,
+        )
+        self._attr_native_unit_of_measurement = f"{coordinator.temperature_unit}·d"
+
+    @property
+    def _estimate(self):
+        snapshot = self.coordinator.data
+        return getattr(snapshot, self._day) if snapshot else None
+
+    @property
+    def native_value(self):
+        """Return the covered contribution, rounded for display only."""
+        estimate = self._estimate
+        value = estimate.value(self._metric) if estimate else None
+        return None if value is None else round(value, 1)
+
+    @property
+    def extra_state_attributes(self):
+        """Return labels and coverage from the same estimate as the value."""
+        snapshot = self.coordinator.data
+        estimate = self._estimate
+        if estimate is None:
+            return {ATTR_BASE_TEMPERATURE: self.coordinator.base_temp}
+        result = estimate.result
+        return {
+            ATTR_BASE_TEMPERATURE: self.coordinator.base_temp,
+            "forecast_source": self.coordinator.weather_entity,
+            "temperature_unit": self.coordinator.temperature_unit,
+            "date": estimate.day.isoformat(),
+            "period_start": estimate.start.isoformat(),
+            "period_end": estimate.end.isoformat(),
+            "as_of": snapshot.as_of.isoformat(),
+            "forecast_retrieved_at": (
+                snapshot.retrieved_at.isoformat() if snapshot.retrieved_at else None
+            ),
+            "coverage": estimate.coverage,
+            "partial": estimate.coverage < 1,
+            "mean_temperature": (
+                round(result.mean_temp, 1)
+                if result and result.mean_temp is not None
+                else None
+            ),
+            "reason": ", ".join(estimate.reasons) or None,
         }

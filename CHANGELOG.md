@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Optional weather entity (hourly forecasts) in setup and reconfiguration, adding `hdd_estimated_today`/`hdd_estimated_tomorrow` and, with cooling, the matching `cdd_` sensors. Today combines observed temperatures until `as_of` with the forecast for the rest of the local day; tomorrow uses the forecast alone. Estimates expose coverage, partial status, period boundaries, retrieval time and a reason when data is missing; they have no state class and never enter daily, weekly or monthly totals (#133)
+- Repairs notice when the weather entity is missing or does not provide hourly forecasts, resolved by reconfiguring (#133)
+
+### Changed
+- Forecast intervals use elapsed duration with a three-hour limit between points; partial coverage is reported, never scaled up. Adding, changing or removing the weather entity does not reset stored daily values (#133)
+
 ## [1.2.0] - 2026-10-20
 
 ### Added

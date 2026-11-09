@@ -8,6 +8,7 @@ from aiohttp.resolver import ThreadedResolver
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.heating_cooling_degree_days import HDDRuntimeData
 from custom_components.heating_cooling_degree_days.const import DOMAIN
 from custom_components.heating_cooling_degree_days.coordinator import (
     HDDDataUpdateCoordinator,
@@ -48,8 +49,10 @@ def diagnostic_entry(hass):
         options={"nested": [{"entity_id": "sensor.bobs_private_room", "name": "Bob"}]},
     )
     entry.add_to_hass(hass)
-    entry.runtime_data = HDDDataUpdateCoordinator(
-        hass, entry.data["temperature_sensor"], 18, "°C", entry.entry_id
+    entry.runtime_data = HDDRuntimeData(
+        HDDDataUpdateCoordinator(
+            hass, entry.data["temperature_sensor"], 18, "°C", entry.entry_id
+        )
     )
     return entry
 
@@ -58,7 +61,7 @@ def diagnostic_entry(hass):
 async def test_redacted_bounded_summary_does_not_read_history(hass, diagnostic_entry):
     """Retain coverage and snapshot data, excluding identities and raw observations."""
     entry = diagnostic_entry
-    coordinator = entry.runtime_data
+    coordinator = entry.runtime_data.coordinator
     coordinator.ledger = {
         date(2026, 6, 21) - timedelta(days=n): DailyRecord(
             123456.789, 0, 43200, 86400, 12345, legacy=n == 2
@@ -143,7 +146,7 @@ async def test_refresh_attempt_time_and_failure_are_real(
     hass, diagnostic_entry, freezer
 ):
     """A failed refresh advances the attempt timestamp while retaining old snapshots."""
-    coordinator = diagnostic_entry.runtime_data
+    coordinator = diagnostic_entry.runtime_data.coordinator
     with patch(HISTORY, return_value=TemperatureHistory((), None, 0)):
         await coordinator.async_refresh()
     data = await async_get_config_entry_diagnostics(hass, diagnostic_entry)
@@ -180,7 +183,7 @@ async def test_unknown_legacy_coverage_and_last_attempt(hass, diagnostic_entry):
     """Legacy unknown coverage is not relabeled as measured full coverage."""
     day = dt_util.now().date() - timedelta(days=1)
     attempted = datetime(2026, 1, 1, tzinfo=UTC)
-    diagnostic_entry.runtime_data.ledger[day] = DailyRecord(
+    diagnostic_entry.runtime_data.coordinator.ledger[day] = DailyRecord(
         4, None, None, 86400, None, attempted.timestamp(), legacy=True
     )
     data = await async_get_config_entry_diagnostics(hass, diagnostic_entry)

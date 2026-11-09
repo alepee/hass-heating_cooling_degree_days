@@ -7,6 +7,7 @@
         "data": {
           "name": "Nom",
           "temperature_sensor": "Capteur de température extérieure",
+          "weather_entity": "Prévisions météo (optionnel)",
           "base_temperature": "Température de base",
           "include_cooling": "Inclure les degrés-jours de refroidissement (DJR)",
           "include_weekly": "Inclure les capteurs hebdomadaires",
@@ -14,7 +15,8 @@
         },
         "data_description": {
           "name": "Optionnel. Utilisé comme titre de l'instance et nom de l'appareil. Si vide, un nom est dérivé de la température de base, par ex. « Degrés-jours de chauffage (18.0°C) ».",
-          "base_temperature": "La température de base par défaut est de 18°C pour Celsius ou 65°F pour Fahrenheit, selon votre système d'unités"
+          "base_temperature": "La température de base par défaut est de 18°C pour Celsius ou 65°F pour Fahrenheit, selon votre système d'unités",
+          "weather_entity": "Optionnel. Une entité météo avec prévisions horaires, utilisée pour les estimations d’aujourd’hui et de demain. Videz ce champ pour supprimer les capteurs d’estimation."
         }
       },
       "reconfigure": {
@@ -23,6 +25,7 @@
         "data": {
           "name": "Nom",
           "temperature_sensor": "Capteur de température extérieure",
+          "weather_entity": "Prévisions météo (optionnel)",
           "base_temperature": "Température de base",
           "include_cooling": "Inclure les degrés-jours de refroidissement (DJR)",
           "include_weekly": "Inclure les capteurs hebdomadaires",
@@ -30,13 +33,15 @@
         },
         "data_description": {
           "name": "Utilisé comme titre de l'instance et nom de l'appareil. Si vide, un nom est dérivé de la température de base, par ex. « Degrés-jours de chauffage (18.0°C) ».",
-          "base_temperature": "L’unité enregistrée pour cette instance est conservée lorsque le système d’unités de Home Assistant change."
+          "base_temperature": "L’unité enregistrée pour cette instance est conservée lorsque le système d’unités de Home Assistant change.",
+          "weather_entity": "Optionnel. Une entité météo avec prévisions horaires, utilisée pour les estimations d’aujourd’hui et de demain. Videz ce champ pour supprimer les capteurs d’estimation."
         }
       }
     },
     "error": {
       "invalid_temperature_sensor": "Sélectionnez un capteur existant avec la classe température ou une unité de température (°C, °F ou K).",
-      "invalid_base_temperature": "Saisissez un nombre fini pour la température de base."
+      "invalid_base_temperature": "Saisissez un nombre fini pour la température de base.",
+      "invalid_weather_entity": "Sélectionnez une entité météo existante qui fournit des prévisions horaires."
     },
     "abort": {
       "already_configured": "Une instance avec ce capteur de température et cette température de base existe déjà.",
@@ -62,6 +67,18 @@
       },
       "cdd_monthly": {
         "name": "DJR Mensuel"
+      },
+      "hdd_estimated_today": {
+        "name": "DJC Estimé Aujourd'hui"
+      },
+      "hdd_estimated_tomorrow": {
+        "name": "DJC Estimé Demain"
+      },
+      "cdd_estimated_today": {
+        "name": "DJR Estimé Aujourd'hui"
+      },
+      "cdd_estimated_tomorrow": {
+        "name": "DJR Estimé Demain"
       }
     }
   },
@@ -73,6 +90,14 @@
     "missing_source": {
       "title": "Source de température introuvable : {name}",
       "description": "Le capteur source `{entity_id}` de {name} n’existe plus. Les degrés-jours déjà calculés sont conservés ; les jours manquants restent incomplets. Rétablissez la source, ou ouvrez [Heating & Cooling Degree Days]({url}), sélectionnez le menu à trois points de cette entrée, puis **Reconfigurer** pour choisir un autre capteur de température."
+    },
+    "weather_missing": {
+      "title": "Source de prévisions météo introuvable : {name}",
+      "description": "L’entité météo `{entity_id}` utilisée pour les estimations de degrés-jours de {name} n’existe plus. Les capteurs historiques ne sont pas affectés ; les estimations n’incluent que les températures observées. Rétablissez l’entité, ou ouvrez [Heating & Cooling Degree Days]({url}), sélectionnez le menu à trois points de cette entrée, puis **Reconfigurer** pour choisir une autre entité météo ou la retirer."
+    },
+    "forecast_unsupported": {
+      "title": "Prévisions horaires indisponibles : {name}",
+      "description": "L’entité météo `{entity_id}` utilisée pour les estimations de degrés-jours de {name} ne fournit pas de prévisions horaires. Les capteurs historiques ne sont pas affectés. Ouvrez [Heating & Cooling Degree Days]({url}), sélectionnez le menu à trois points de cette entrée, puis **Reconfigurer** pour choisir une entité météo avec prévisions horaires ou la retirer."
     }
   }
 }

@@ -63,7 +63,7 @@ async def test_loaded_reconfigure_reloads_once(
     entry = _add_entry(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    old_coordinator = entry.runtime_data
+    old_coordinator = entry.runtime_data.coordinator
     registry = er.async_get(hass)
     entity_ids = {
         entity.entity_id
@@ -87,8 +87,8 @@ async def test_loaded_reconfigure_reloads_once(
     assert result["reason"] == "reconfigure_successful"
     reload_entry.assert_awaited_once_with(entry.entry_id)
     assert entry.state is ConfigEntryState.LOADED
-    assert entry.runtime_data is not old_coordinator
-    assert entry.runtime_data.base_temp == 15.0
+    assert entry.runtime_data.coordinator is not old_coordinator
+    assert entry.runtime_data.coordinator.base_temp == 15.0
     assert entry.title == "Heating Degree Days (15.0°C)"
     assert len(entry.update_listeners) == 1
     assert DOMAIN not in hass.data
@@ -106,7 +106,7 @@ async def test_unchanged_loaded_reconfigure_does_not_reload(
     entry = _add_entry(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    coordinator = entry.runtime_data
+    coordinator = entry.runtime_data.coordinator
 
     with patch.object(hass.config_entries, "async_reload", new=AsyncMock()) as reload:
         result = await entry.start_reconfigure_flow(hass)
@@ -117,7 +117,7 @@ async def test_unchanged_loaded_reconfigure_does_not_reload(
         await hass.async_block_till_done()
 
     reload.assert_not_awaited()
-    assert entry.runtime_data is coordinator
+    assert entry.runtime_data.coordinator is coordinator
 
 
 @pytest.mark.parametrize(
@@ -163,7 +163,7 @@ async def test_forwarding_failure_rolls_back_entities_and_runtime_data(
 
     async def fail_after_forward(config_entry, platforms):
         await forward(config_entry, platforms)
-        coordinators.append(config_entry.runtime_data)
+        coordinators.append(config_entry.runtime_data.coordinator)
         raise ConfigEntryNotReady("Retry after partial setup")
 
     with patch.object(
@@ -197,14 +197,14 @@ async def test_unload_failure_preserves_loaded_runtime(
     entry = _add_entry(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    coordinator = entry.runtime_data
+    coordinator = entry.runtime_data.coordinator
 
     with patch.object(
         hass.config_entries, "async_unload_platforms", return_value=False
     ):
         assert not await hass.config_entries.async_unload(entry.entry_id)
 
-    assert entry.runtime_data is coordinator
+    assert entry.runtime_data.coordinator is coordinator
     assert len(entry.update_listeners) == 1
 
     # The entry stays loaded on purpose; release its timers before teardown.
@@ -245,7 +245,7 @@ async def test_unload_preserves_storage_remove_deletes_only_own_storage(
     assert removed_key not in hass_storage
     assert kept_key in hass_storage
     assert kept.state is ConfigEntryState.LOADED
-    assert kept.runtime_data.daily_hdd_values[date(2026, 10, 1)] == 2.0
+    assert kept.runtime_data.coordinator.daily_hdd_values[date(2026, 10, 1)] == 2.0
 
 
 async def test_cleanup_preserves_unmanaged_and_other_entry_entities(

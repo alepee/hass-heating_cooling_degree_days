@@ -12,6 +12,7 @@ CONF_TEMPERATURE_UNIT = "temperature_unit"
 CONF_INCLUDE_COOLING = "include_cooling"
 CONF_INCLUDE_WEEKLY = "include_weekly"
 CONF_INCLUDE_MONTHLY = "include_monthly"
+CONF_WEATHER_ENTITY = "weather_entity"
 
 DEFAULT_BASE_TEMPERATURE_CELSIUS = 18.0
 DEFAULT_BASE_TEMPERATURE_FAHRENHEIT = 65.0
@@ -43,6 +44,20 @@ SENSOR_TYPE_CDD_DAILY = "cdd_daily"
 SENSOR_TYPE_CDD_WEEKLY = "cdd_weekly"
 SENSOR_TYPE_CDD_MONTHLY = "cdd_monthly"
 
+# Forecast estimate sensor types (only when a weather entity is configured)
+SENSOR_TYPE_HDD_ESTIMATED_TODAY = "hdd_estimated_today"
+SENSOR_TYPE_HDD_ESTIMATED_TOMORROW = "hdd_estimated_tomorrow"
+SENSOR_TYPE_CDD_ESTIMATED_TODAY = "cdd_estimated_today"
+SENSOR_TYPE_CDD_ESTIMATED_TOMORROW = "cdd_estimated_tomorrow"
+FORECAST_SENSOR_TYPES = frozenset(
+    {
+        SENSOR_TYPE_HDD_ESTIMATED_TODAY,
+        SENSOR_TYPE_HDD_ESTIMATED_TOMORROW,
+        SENSOR_TYPE_CDD_ESTIMATED_TODAY,
+        SENSOR_TYPE_CDD_ESTIMATED_TOMORROW,
+    }
+)
+
 # Attributes
 ATTR_BASE_TEMPERATURE = "base_temperature"
 ATTR_DATE_RANGE = "date_range"
@@ -50,9 +65,12 @@ ATTR_MEAN_TEMPERATURE = "mean_temperature"
 
 
 def get_enabled_sensor_types(
-    include_cooling: bool, include_weekly: bool, include_monthly: bool
+    include_cooling: bool,
+    include_weekly: bool,
+    include_monthly: bool,
+    include_forecast: bool = False,
 ) -> tuple[str, ...]:
-    """Return the historical sensor types enabled for an entry, in display order."""
+    """Return the sensor types enabled for an entry, in display order."""
     types = [SENSOR_TYPE_HDD_DAILY]
     if include_weekly:
         types.append(SENSOR_TYPE_HDD_WEEKLY)
@@ -64,7 +82,15 @@ def get_enabled_sensor_types(
             types.append(SENSOR_TYPE_CDD_WEEKLY)
         if include_monthly:
             types.append(SENSOR_TYPE_CDD_MONTHLY)
+    if include_forecast:
+        types += [SENSOR_TYPE_HDD_ESTIMATED_TODAY, SENSOR_TYPE_HDD_ESTIMATED_TOMORROW]
+        if include_cooling:
+            types += [
+                SENSOR_TYPE_CDD_ESTIMATED_TODAY,
+                SENSOR_TYPE_CDD_ESTIMATED_TOMORROW,
+            ]
     return tuple(types)
 
 
 HISTORICAL_SENSOR_TYPES = frozenset(get_enabled_sensor_types(True, True, True))
+MANAGED_SENSOR_TYPES = HISTORICAL_SENSOR_TYPES | FORECAST_SENSOR_TYPES
