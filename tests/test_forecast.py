@@ -17,6 +17,7 @@ from custom_components.heating_cooling_degree_days.forecast import (
 from custom_components.heating_cooling_degree_days.history import TemperatureHistory
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er, issue_registry as ir
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -277,7 +278,7 @@ async def test_weather_state_change_requests_a_spaced_refetch(hass, weather, fre
 
 
 @pytest.mark.freeze_time(NOW)
-async def test_unsupported_hourly_creates_repair_resolved_by_reconfigure(
+async def test_unsupported_hourly_creates_repair_resolved_by_options(
     hass, hass_storage
 ):
     """Persistent capability problems use Repairs; removing the source clears it."""
@@ -293,25 +294,22 @@ async def test_unsupported_hourly_creates_repair_resolved_by_reconfigure(
 
     registry = er.async_get(hass)
     historical = _state(hass, entry, "hdd_daily").entity_id
-    result = await entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
     with (
         patch(FORECAST_HISTORY, return_value=_observed()),
         patch(LEDGER_HISTORY, return_value=TemperatureHistory((), None, 0)),
         patch(f"{PKG}.config_flow.async_remove_stored_data") as remove,
     ):
-        result = await hass.config_entries.flow.async_configure(
+        result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             {
-                "name": entry.title,
-                "temperature_sensor": SOURCE,
-                "base_temperature": 18.0,
                 "include_cooling": True,
                 "include_weekly": True,
                 "include_monthly": True,
             },
         )
         await hass.async_block_till_done()
-    assert result["reason"] == "reconfigure_successful"
+    assert result["type"] is FlowResultType.CREATE_ENTRY
     remove.assert_not_called()
     assert "weather_entity" not in entry.data
     assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
@@ -467,3 +465,44 @@ async def test_weather_loading_after_us_is_fetched_immediately(hass):
         ir.async_get(hass).async_get_issue(DOMAIN, f"forecast_source_{entry.entry_id}")
         is None
     )
+
+
+@pytest.mark.freeze_time(NOW)
+async def test_options_flow_adds_and_removes_forecast_source(hass, weather):
+    """The options flow (cog) adds a weather source to a loaded entry, then clears it."""
+    entry = _add_entry(hass)
+    hass.config_entries.async_update_entry(
+        entry, data={k: v for k, v in ENTRY_DATA.items() if k != "weather_entity"}
+    )
+    await _setup(hass, entry)
+    assert _state(hass, entry, "hdd_estimated_today") is None
+    historical = _state(hass, entry, "hdd_daily").entity_id
+
+    options = {"include_cooling": True, "include_weekly": True, "include_monthly": True}
+    with (
+        patch(FORECAST_HISTORY, return_value=_observed()),
+        patch(LEDGER_HISTORY, return_value=TemperatureHistory((), None, 0)),
+        patch(f"{PKG}.config_flow.async_remove_stored_data") as remove,
+    ):
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        assert result["step_id"] == "init"
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {**options, "weather_entity": WEATHER}
+        )
+        await hass.async_block_till_done()
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        assert entry.data["weather_entity"] == WEATHER
+        assert entry.options == {}
+        assert float(_state(hass, entry, "hdd_estimated_tomorrow").state) == 12.0
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], options
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert "weather_entity" not in entry.data
+    assert _state(hass, entry, "hdd_estimated_today") is None
+    assert er.async_get(hass).async_get(historical) is not None
+    remove.assert_not_called()

@@ -40,6 +40,10 @@ def _calculated_data():
         yield
 
 
+# The reconfigure form only shows the calculation settings.
+RECONFIGURE_KEYS = ("temperature_sensor", "base_temperature")
+
+
 def _add_entry(hass: HomeAssistant, **overrides) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -78,7 +82,7 @@ async def test_loaded_reconfigure_reloads_once(
             result["flow_id"],
             {
                 "name": entry.title,
-                **{k: v for k, v in ENTRY_DATA.items() if k != "temperature_unit"},
+                **{k: ENTRY_DATA[k] for k in RECONFIGURE_KEYS},
                 "base_temperature": 15.0,
             },
         )
@@ -112,7 +116,7 @@ async def test_unchanged_loaded_reconfigure_does_not_reload(
         result = await entry.start_reconfigure_flow(hass)
         await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {k: v for k, v in ENTRY_DATA.items() if k != "temperature_unit"},
+            {k: ENTRY_DATA[k] for k in RECONFIGURE_KEYS},
         )
         await hass.async_block_till_done()
 
@@ -304,7 +308,7 @@ async def test_reconfigure_recovers_entry_waiting_for_retry(
         result = await entry.start_reconfigure_flow(hass)
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {k: v for k, v in ENTRY_DATA.items() if k != "temperature_unit"},
+            {k: ENTRY_DATA[k] for k in RECONFIGURE_KEYS},
         )
         await hass.async_block_till_done()
 
@@ -322,7 +326,7 @@ async def test_reconfigure_recovers_entry_waiting_for_retry(
         (True, True, False, {"hdd_daily", "hdd_weekly", "cdd_daily", "cdd_weekly"}),
     ],
 )
-async def test_reconfigure_sensor_options_match_registry_and_active_entities(
+async def test_sensor_options_match_registry_and_active_entities(
     recorder_mock,
     enable_custom_integrations,
     hass: HomeAssistant,
@@ -337,11 +341,10 @@ async def test_reconfigure_sensor_options_match_registry_and_active_entities(
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    result = await entry.start_reconfigure_flow(hass)
-    await hass.config_entries.flow.async_configure(
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    await hass.config_entries.options.async_configure(
         result["flow_id"],
         {
-            **{k: v for k, v in ENTRY_DATA.items() if k != "temperature_unit"},
             "include_cooling": cooling,
             "include_weekly": weekly,
             "include_monthly": monthly,

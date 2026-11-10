@@ -177,7 +177,7 @@ async def test_missing_at_setup_reconfigure_and_remove_clear_issue(hass):
         await hass.config_entries.flow.async_configure(
             flow["flow_id"],
             {
-                **{k: v for k, v in entry.data.items() if k != "temperature_unit"},
+                "base_temperature": entry.data["base_temperature"],
                 "temperature_sensor": source.entity_id,
             },
         )
@@ -347,9 +347,8 @@ async def test_different_registry_source_requires_reconfigure(hass):
             await hass.config_entries.flow.async_configure(
                 flow["flow_id"],
                 {
-                    key: value
-                    for key, value in entry.data.items()
-                    if key not in ("temperature_unit", CONF_SOURCE_REGISTRY_ID)
+                    "temperature_sensor": entry.data["temperature_sensor"],
+                    "base_temperature": entry.data["base_temperature"],
                 },
             )
             await hass.async_block_till_done(wait_background_tasks=True)
