@@ -156,7 +156,7 @@ rules:
     comment: config_flow.py provides async_step_reconfigure with validation, duplicate guards, stored-unit preservation and reload tests.
   repair-issues:
     status: todo
-    comment: Per-entry issues exist for a missing temperature source and for a missing/non-hourly weather source, resolved by reconfiguration; there is no repair flow yet.
+    comment: Per-entry issues exist for a missing temperature source and for a missing/non-hourly weather source, resolved by reconfiguration or the options flow; there is no repair flow yet.
   stale-devices:
     status: exempt
     comment: No remote inventory can disappear; the single service device is tied to its config entry and removed with it.

@@ -8,8 +8,14 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.components.sensor import SensorDeviceClass
-from homeassistant.config_entries import ConfigEntry, ConfigEntryState, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigEntryState,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.const import CONF_NAME, UnitOfTemperature
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er, selector
 from homeassistant.helpers.translation import async_get_translations
 
@@ -40,11 +46,98 @@ from .source import CONF_SOURCE_REGISTRY_ID, async_clear_source_issue
 
 _LOGGER = logging.getLogger(__name__)
 
+# Settings that only select which sensors exist; changing them keeps stored values.
+SENSOR_OPTION_DEFAULTS = {
+    CONF_INCLUDE_COOLING: DEFAULT_INCLUDE_COOLING,
+    CONF_INCLUDE_WEEKLY: DEFAULT_INCLUDE_WEEKLY,
+    CONF_INCLUDE_MONTHLY: DEFAULT_INCLUDE_MONTHLY,
+}
+
+
+def _weather_schema_field(current: dict[str, Any]) -> dict[Any, Any]:
+    """Build the optional weather entity field, prefilled when already set."""
+    return {
+        vol.Optional(
+            CONF_WEATHER_ENTITY,
+            description={"suggested_value": current.get(CONF_WEATHER_ENTITY)},
+        ): selector.EntitySelector(
+            selector.EntitySelectorConfig(domain=["weather"]),
+        ),
+    }
+
+
+def _sensor_option_fields(current: dict[str, Any]) -> dict[Any, Any]:
+    """Build the sensor selection toggles, prefilled with current values."""
+    return {
+        vol.Required(key, default=current.get(key, default)): (
+            selector.BooleanSelector()
+        )
+        for key, default in SENSOR_OPTION_DEFAULTS.items()
+    }
+
+
+def _is_valid_weather(hass: HomeAssistant, entity_id: str) -> bool:
+    """Require an existing weather entity that provides hourly forecasts."""
+    state = hass.states.get(entity_id)
+    return (
+        state is not None
+        and state.domain == "weather"
+        and bool(
+            (state.attributes.get(ATTR_SUPPORTED_FEATURES) or 0)
+            & FEATURE_FORECAST_HOURLY
+        )
+    )
+
+
+async def _async_derive_title(
+    hass: HomeAssistant, data: dict[str, Any], language: str | None = None
+) -> str:
+    """Derive a localized title without rounding distinct base temperatures."""
+    cooling = data.get(CONF_INCLUDE_COOLING, DEFAULT_INCLUDE_COOLING)
+    translations = await async_get_translations(
+        hass, language or hass.config.language, "common", {DOMAIN}
+    )
+    key = "heating_and_cooling" if cooling else "heating"
+    base_name = (
+        DEFAULT_NAME_WITH_HEATING_AND_COOLING if cooling else DEFAULT_NAME_WITH_HEATING
+    )
+    base_name = translations.get(
+        f"component.{DOMAIN}.common.default_title_{key}", base_name
+    )
+    return (
+        f"{base_name} "
+        f"({float(data[CONF_BASE_TEMPERATURE])}{data[CONF_TEMPERATURE_UNIT]})"
+    )
+
+
+async def _async_is_generated_title(
+    hass: HomeAssistant, title: str, data: dict[str, Any]
+) -> bool:
+    """Recognize supported languages and legacy one-decimal generated titles."""
+    rounded_data = {
+        **data,
+        CONF_BASE_TEMPERATURE: float(f"{data[CONF_BASE_TEMPERATURE]:.1f}"),
+    }
+    # An entry may have been created before the system language changed.
+    for language in {"en", "fr", hass.config.language}:
+        if title in {
+            await _async_derive_title(hass, data, language),
+            await _async_derive_title(hass, rounded_data, language),
+        }:
+            return True
+    return False
+
 
 class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Heating & Cooling Degree Days."""
 
     VERSION = 2
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Expose the forecast source and sensor selection behind the cog."""
+        return HDDOptionsFlow()
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
@@ -66,7 +159,7 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 # The name is only used as the entry title, not stored in data
                 name = user_input.get(CONF_NAME, "").strip()
-                title = name or await self._async_derive_title(data)
+                title = name or await _async_derive_title(self.hass, data)
 
                 _LOGGER.debug("Creating integration with title: %s", title)
 
@@ -98,11 +191,11 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not errors:
                 # An empty name falls back to a title derived from the new settings
                 name = user_input.get(CONF_NAME, "").strip()
-                if name == entry.title and await self._async_is_generated_title(
-                    name, entry.data
+                if name == entry.title and await _async_is_generated_title(
+                    self.hass, name, entry.data
                 ):
                     name = ""
-                title = name or await self._async_derive_title(data)
+                title = name or await _async_derive_title(self.hass, data)
 
                 _LOGGER.debug(
                     "Reconfiguring entry %s with title: %s", entry.entry_id, title
@@ -142,56 +235,49 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         current = dict(entry.data) if entry else {}
         name_default = entry.title if entry else ""
 
-        return vol.Schema(
-            {
-                vol.Optional(CONF_NAME, default=name_default): selector.TextSelector(),
-                vol.Required(
-                    CONF_TEMPERATURE_SENSOR,
-                    description={
-                        "suggested_value": current.get(CONF_TEMPERATURE_SENSOR)
-                    },
-                ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(
-                        domain=["sensor"],
-                    ),
+        schema: dict[Any, Any] = {
+            vol.Optional(CONF_NAME, default=name_default): selector.TextSelector(),
+            vol.Required(
+                CONF_TEMPERATURE_SENSOR,
+                description={"suggested_value": current.get(CONF_TEMPERATURE_SENSOR)},
+            ): selector.EntitySelector(
+                selector.EntitySelectorConfig(
+                    domain=["sensor"],
                 ),
-                vol.Optional(
-                    CONF_WEATHER_ENTITY,
-                    description={"suggested_value": current.get(CONF_WEATHER_ENTITY)},
-                ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=["weather"]),
+            ),
+            vol.Required(
+                CONF_BASE_TEMPERATURE,
+                default=current.get(
+                    CONF_BASE_TEMPERATURE, self._get_default_base_temperature()
                 ),
-                vol.Required(
-                    CONF_BASE_TEMPERATURE,
-                    default=current.get(
-                        CONF_BASE_TEMPERATURE, self._get_default_base_temperature()
-                    ),
-                ): vol.Coerce(float),
-                vol.Required(
-                    CONF_INCLUDE_COOLING,
-                    default=current.get(CONF_INCLUDE_COOLING, DEFAULT_INCLUDE_COOLING),
-                ): selector.BooleanSelector(),
-                vol.Required(
-                    CONF_INCLUDE_WEEKLY,
-                    default=current.get(CONF_INCLUDE_WEEKLY, DEFAULT_INCLUDE_WEEKLY),
-                ): selector.BooleanSelector(),
-                vol.Required(
-                    CONF_INCLUDE_MONTHLY,
-                    default=current.get(CONF_INCLUDE_MONTHLY, DEFAULT_INCLUDE_MONTHLY),
-                ): selector.BooleanSelector(),
-            }
-        )
+            ): vol.Coerce(float),
+        }
+        if entry is None:
+            # Reconfiguration only changes the calculation; the forecast source
+            # and the sensor selection are edited in the options flow.
+            schema.update(_weather_schema_field(current))
+            schema.update(_sensor_option_fields(current))
+        return vol.Schema(schema)
 
     def _build_entry_data(
         self, user_input: dict[str, Any], entry: ConfigEntry | None = None
     ) -> dict[str, Any]:
         """Turn the submitted form into entry data (the name is not part of it)."""
+        # Reconfiguration keeps the options it does not show; the source
+        # registry identity is resolved again for the submitted sensor.
+        data = (
+            {k: v for k, v in entry.data.items() if k != CONF_SOURCE_REGISTRY_ID}
+            if entry
+            else {}
+        )
         # An omitted or cleared weather entity removes the forecast estimates.
-        data = {
-            k: v
-            for k, v in user_input.items()
-            if k != CONF_NAME and not (k == CONF_WEATHER_ENTITY and not v)
-        }
+        data.update(
+            {
+                k: v
+                for k, v in user_input.items()
+                if k != CONF_NAME and not (k == CONF_WEATHER_ENTITY and not v)
+            }
+        )
         # Reconfiguration always displays and preserves the entry's stored unit.
         data[CONF_TEMPERATURE_UNIT] = (
             entry.data[CONF_TEMPERATURE_UNIT]
@@ -230,43 +316,6 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             for key in (source_key, CONF_BASE_TEMPERATURE, CONF_TEMPERATURE_UNIT)
         )
 
-    async def _async_derive_title(
-        self, data: dict[str, Any], language: str | None = None
-    ) -> str:
-        """Derive a localized title without rounding distinct base temperatures."""
-        cooling = data.get(CONF_INCLUDE_COOLING, DEFAULT_INCLUDE_COOLING)
-        translations = await async_get_translations(
-            self.hass, language or self.hass.config.language, "common", {DOMAIN}
-        )
-        key = "heating_and_cooling" if cooling else "heating"
-        base_name = (
-            DEFAULT_NAME_WITH_HEATING_AND_COOLING
-            if cooling
-            else DEFAULT_NAME_WITH_HEATING
-        )
-        base_name = translations.get(
-            f"component.{DOMAIN}.common.default_title_{key}", base_name
-        )
-        return (
-            f"{base_name} "
-            f"({float(data[CONF_BASE_TEMPERATURE])}{data[CONF_TEMPERATURE_UNIT]})"
-        )
-
-    async def _async_is_generated_title(self, title: str, data: dict[str, Any]) -> bool:
-        """Recognize supported languages and legacy one-decimal generated titles."""
-        rounded_data = {
-            **data,
-            CONF_BASE_TEMPERATURE: float(f"{data[CONF_BASE_TEMPERATURE]:.1f}"),
-        }
-        # An entry may have been created before the system language changed.
-        for language in {"en", "fr", self.hass.config.language}:
-            if title in {
-                await self._async_derive_title(data, language),
-                await self._async_derive_title(rounded_data, language),
-            }:
-                return True
-        return False
-
     def _get_default_base_temperature(self) -> float:
         """Get the default base temperature based on user preferred unit system."""
         return MAP_DEFAULT_BASE_TEMPERATURE.get(
@@ -281,21 +330,9 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not math.isfinite(user_input[CONF_BASE_TEMPERATURE]):
             errors[CONF_BASE_TEMPERATURE] = "invalid_base_temperature"
         weather = user_input.get(CONF_WEATHER_ENTITY)
-        if weather and not self._validate_weather(weather):
+        if weather and not _is_valid_weather(self.hass, weather):
             errors[CONF_WEATHER_ENTITY] = "invalid_weather_entity"
         return errors
-
-    def _validate_weather(self, entity_id: str) -> bool:
-        """Require an existing weather entity that provides hourly forecasts."""
-        state = self.hass.states.get(entity_id)
-        return (
-            state is not None
-            and state.domain == "weather"
-            and bool(
-                (state.attributes.get(ATTR_SUPPORTED_FEATURES) or 0)
-                & FEATURE_FORECAST_HOURLY
-            )
-        )
 
     def _validate_sensor(self, entity_id: str) -> bool:
         """Require an existing sensor with a temperature class or unit."""
@@ -308,3 +345,53 @@ class HDDConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         ) == SensorDeviceClass.TEMPERATURE or state.attributes.get(
             "unit_of_measurement"
         ) in set(UnitOfTemperature)
+
+
+class HDDOptionsFlow(OptionsFlow):
+    """Change the forecast source and the exposed sensors of an entry.
+
+    These settings never affect stored daily values. They stay in entry data,
+    shared with the reconfigure flow, so no storage migration is needed.
+    """
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show and apply the options form."""
+        entry = self.config_entry
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            weather = user_input.get(CONF_WEATHER_ENTITY)
+            if weather and not _is_valid_weather(self.hass, weather):
+                errors[CONF_WEATHER_ENTITY] = "invalid_weather_entity"
+            else:
+                data = {k: v for k, v in entry.data.items() if k != CONF_WEATHER_ENTITY}
+                data.update({key: user_input[key] for key in SENSOR_OPTION_DEFAULTS})
+                # An omitted or cleared weather entity removes the estimates.
+                if weather:
+                    data[CONF_WEATHER_ENTITY] = weather
+
+                # Keep a generated title in line with the cooling toggle.
+                title = entry.title
+                if await _async_is_generated_title(self.hass, title, entry.data):
+                    title = await _async_derive_title(self.hass, data)
+
+                async_clear_forecast_issue(self.hass, entry.entry_id)
+                # The loaded entry's update listener owns the reload.
+                if self.hass.config_entries.async_update_entry(
+                    entry, title=title, data=data
+                ) and (entry.state is not ConfigEntryState.LOADED):
+                    self.hass.config_entries.async_schedule_reload(entry.entry_id)
+                return self.async_create_entry(data=dict(entry.options))
+
+        current = dict(entry.data)
+        if user_input is not None:
+            current = {**current, **user_input}
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {**_weather_schema_field(current), **_sensor_option_fields(current)}
+            ),
+            errors=errors,
+        )

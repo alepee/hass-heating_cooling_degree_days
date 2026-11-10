@@ -16,7 +16,7 @@ from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .test_config_flow import BASE_USER_INPUT, TEMP_SENSOR
+from .test_config_flow import BASE_USER_INPUT, RECONFIGURE_INPUT, TEMP_SENSOR
 
 pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
 
@@ -124,7 +124,7 @@ async def test_reconfigure_previous_language_or_rounded_title(
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {**BASE_USER_INPUT, CONF_NAME: old_title, CONF_BASE_TEMPERATURE: 16.04},
+            {**RECONFIGURE_INPUT, CONF_NAME: old_title, CONF_BASE_TEMPERATURE: 16.04},
         )
     assert result["reason"] == "reconfigure_successful"
     assert entry.title == f"{expected} (16.04°C)"
@@ -165,7 +165,7 @@ async def test_custom_title_survives_language_and_settings_change(
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {**BASE_USER_INPUT, CONF_NAME: name, CONF_BASE_TEMPERATURE: 16.0},
+            {**RECONFIGURE_INPUT, CONF_NAME: name, CONF_BASE_TEMPERATURE: 16.0},
         )
     assert result["reason"] == "reconfigure_successful"
     assert entry.title == name

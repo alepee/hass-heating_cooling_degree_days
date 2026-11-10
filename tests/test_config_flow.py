@@ -12,6 +12,7 @@ from custom_components.heating_cooling_degree_days.const import (
     CONF_INCLUDE_WEEKLY,
     CONF_TEMPERATURE_SENSOR,
     CONF_TEMPERATURE_UNIT,
+    CONF_WEATHER_ENTITY,
     DOMAIN,
 )
 from homeassistant import config_entries
@@ -30,6 +31,12 @@ BASE_USER_INPUT = {
     CONF_INCLUDE_COOLING: False,
     CONF_INCLUDE_WEEKLY: True,
     CONF_INCLUDE_MONTHLY: True,
+}
+
+# Reconfiguration only edits the calculation; options live behind the cog.
+RECONFIGURE_INPUT = {
+    CONF_TEMPERATURE_SENSOR: TEMP_SENSOR,
+    CONF_BASE_TEMPERATURE: 18.0,
 }
 
 
@@ -163,6 +170,11 @@ async def _start_reconfigure_flow(hass: HomeAssistant, entry: MockConfigEntry):
     return result
 
 
+def _flow_input(entry: MockConfigEntry | None) -> dict:
+    """Return a valid form submission for the user or reconfigure step."""
+    return dict(RECONFIGURE_INPUT if entry else BASE_USER_INPUT)
+
+
 def _add_entry(hass: HomeAssistant, **overrides) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -193,16 +205,15 @@ async def test_reconfigure_prefills_current_settings(
     }
     assert suggested[CONF_TEMPERATURE_SENSOR] == TEMP_SENSOR
     assert defaults[CONF_BASE_TEMPERATURE] == 16.0
-    assert defaults[CONF_INCLUDE_WEEKLY] is False
-    assert defaults[CONF_INCLUDE_MONTHLY] is True
     assert defaults[CONF_NAME] == entry.title
+    assert set(suggested) == {CONF_NAME, CONF_TEMPERATURE_SENSOR, CONF_BASE_TEMPERATURE}
 
 
 async def test_reconfigure_updates_entry(
     hass: HomeAssistant, _temperature_sensor
 ) -> None:
     """Submitting the reconfigure form updates data and re-derives the title."""
-    entry = _add_entry(hass)
+    entry = _add_entry(hass, weather_entity="weather.home")
 
     with patch(
         "custom_components.heating_cooling_degree_days.async_setup_entry",
@@ -211,22 +222,20 @@ async def test_reconfigure_updates_entry(
         result = await _start_reconfigure_flow(hass, entry)
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_NAME: "",
-                **BASE_USER_INPUT,
-                CONF_BASE_TEMPERATURE: 15.0,
-                CONF_INCLUDE_COOLING: True,
-            },
+            {CONF_NAME: "", **RECONFIGURE_INPUT, CONF_BASE_TEMPERATURE: 15.0},
         )
         await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     assert entry.data[CONF_BASE_TEMPERATURE] == 15.0
-    assert entry.data[CONF_INCLUDE_COOLING] is True
+    # Options not shown by the form are preserved.
+    assert entry.data[CONF_INCLUDE_COOLING] is False
+    assert entry.data[CONF_INCLUDE_WEEKLY] is True
+    assert entry.data[CONF_WEATHER_ENTITY] == "weather.home"
     assert entry.data[CONF_TEMPERATURE_UNIT] == "°C"
     assert CONF_NAME not in entry.data
-    assert entry.title == "Heating & Cooling Degree Days (15.0°C)"
+    assert entry.title == "Heating Degree Days (15.0°C)"
 
 
 async def test_reconfigure_keeps_custom_name(
@@ -242,7 +251,7 @@ async def test_reconfigure_keeps_custom_name(
         result = await _start_reconfigure_flow(hass, entry)
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_NAME: "Salon", **BASE_USER_INPUT, CONF_BASE_TEMPERATURE: 15.0},
+            {CONF_NAME: "Salon", **RECONFIGURE_INPUT, CONF_BASE_TEMPERATURE: 15.0},
         )
         await hass.async_block_till_done()
 
@@ -259,7 +268,7 @@ async def test_reconfigure_invalid_sensor_shows_error(
     result = await _start_reconfigure_flow(hass, entry)
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {**BASE_USER_INPUT, CONF_TEMPERATURE_SENSOR: "sensor.does_not_exist"},
+        {**RECONFIGURE_INPUT, CONF_TEMPERATURE_SENSOR: "sensor.does_not_exist"},
     )
 
     assert result["type"] is FlowResultType.FORM
@@ -279,7 +288,7 @@ async def test_reconfigure_same_settings_is_not_a_duplicate(
     ):
         result = await _start_reconfigure_flow(hass, entry)
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], dict(BASE_USER_INPUT)
+            result["flow_id"], dict(RECONFIGURE_INPUT)
         )
         await hass.async_block_till_done()
 
@@ -296,7 +305,7 @@ async def test_reconfigure_duplicate_of_other_entry_aborts(
 
     result = await _start_reconfigure_flow(hass, entry)
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {**BASE_USER_INPUT, CONF_BASE_TEMPERATURE: 16.0}
+        result["flow_id"], {**RECONFIGURE_INPUT, CONF_BASE_TEMPERATURE: 16.0}
     )
 
     assert result["type"] is FlowResultType.ABORT
@@ -322,17 +331,17 @@ async def test_reconfigure_clears_stored_data_on_calculation_change(
     ):
         result = await _start_reconfigure_flow(hass, entry)
         await hass.config_entries.flow.async_configure(
-            result["flow_id"], {**BASE_USER_INPUT, CONF_BASE_TEMPERATURE: 15.0}
+            result["flow_id"], {**RECONFIGURE_INPUT, CONF_BASE_TEMPERATURE: 15.0}
         )
         await hass.async_block_till_done()
 
     remove_stored.assert_awaited_once_with(hass, entry.entry_id)
 
 
-async def test_reconfigure_keeps_stored_data_on_sensor_option_change(
+async def test_reconfigure_keeps_stored_data_on_name_change(
     hass: HomeAssistant, _temperature_sensor
 ) -> None:
-    """Toggling the weekly/monthly sensors leaves the stored daily values alone."""
+    """Renaming the entry leaves the stored daily values alone."""
     entry = _add_entry(hass)
 
     with (
@@ -347,7 +356,7 @@ async def test_reconfigure_keeps_stored_data_on_sensor_option_change(
     ):
         result = await _start_reconfigure_flow(hass, entry)
         await hass.config_entries.flow.async_configure(
-            result["flow_id"], {**BASE_USER_INPUT, CONF_INCLUDE_MONTHLY: False}
+            result["flow_id"], {**RECONFIGURE_INPUT, CONF_NAME: "Salon"}
         )
         await hass.async_block_till_done()
 
@@ -367,7 +376,8 @@ async def test_nonfinite_base_is_rejected(
         else await _start_user_flow(hass)
     )
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {**BASE_USER_INPUT, CONF_BASE_TEMPERATURE: base_temp}
+        result["flow_id"],
+        {**_flow_input(entry), CONF_BASE_TEMPERATURE: base_temp},
     )
 
     assert result["type"] is FlowResultType.FORM
@@ -402,11 +412,11 @@ async def test_invalid_source_is_rejected(
         with pytest.raises(InvalidData):
             await hass.config_entries.flow.async_configure(
                 result["flow_id"],
-                {**BASE_USER_INPUT, CONF_TEMPERATURE_SENSOR: entity_id},
+                {**_flow_input(entry), CONF_TEMPERATURE_SENSOR: entity_id},
             )
         return
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {**BASE_USER_INPUT, CONF_TEMPERATURE_SENSOR: entity_id}
+        result["flow_id"], {**_flow_input(entry), CONF_TEMPERATURE_SENSOR: entity_id}
     )
 
     assert result["type"] is FlowResultType.FORM
@@ -441,7 +451,7 @@ async def test_temperature_class_or_unit_is_accepted(
             else await _start_user_flow(hass)
         )
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], dict(BASE_USER_INPUT)
+            result["flow_id"], _flow_input(entry)
         )
         await hass.async_block_till_done()
 
@@ -484,7 +494,7 @@ async def test_reconfigure_preserves_stored_unit_after_system_change(
         assert defaults[CONF_BASE_TEMPERATURE] == base_temp
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {**BASE_USER_INPUT, **defaults, CONF_INCLUDE_WEEKLY: False},
+            {**RECONFIGURE_INPUT, **defaults, CONF_NAME: "Office"},
         )
         await hass.async_block_till_done()
 
@@ -508,7 +518,7 @@ async def test_reconfigure_preserves_existing_custom_title(
     result = await _start_reconfigure_flow(hass, entry)
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {**BASE_USER_INPUT, CONF_NAME: custom_name, CONF_BASE_TEMPERATURE: 15.0},
+        {**RECONFIGURE_INPUT, CONF_NAME: custom_name, CONF_BASE_TEMPERATURE: 15.0},
     )
     await hass.async_block_till_done()
 
@@ -531,3 +541,122 @@ async def test_same_number_with_different_units_is_not_a_duplicate(
         )
         await hass.async_block_till_done()
     assert result["type"] is FlowResultType.CREATE_ENTRY
+
+
+async def _start_options_flow(hass: HomeAssistant, entry: MockConfigEntry):
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+    return result
+
+
+SENSOR_OPTIONS = {
+    CONF_INCLUDE_COOLING: False,
+    CONF_INCLUDE_WEEKLY: True,
+    CONF_INCLUDE_MONTHLY: True,
+}
+
+# Reconfiguration only edits the calculation; options live behind the cog.
+RECONFIGURE_INPUT = {
+    CONF_TEMPERATURE_SENSOR: TEMP_SENSOR,
+    CONF_BASE_TEMPERATURE: 18.0,
+}
+
+
+async def test_options_flow_prefills_current_settings(
+    hass: HomeAssistant, _temperature_sensor
+) -> None:
+    """The options form shows the entry's weather source and sensor selection."""
+    entry = _add_entry(hass, include_weekly=False, weather_entity="weather.home")
+
+    result = await _start_options_flow(hass, entry)
+
+    schema = result["data_schema"].schema
+    defaults = {
+        key.schema: key.default()
+        for key in schema
+        if callable(getattr(key, "default", None))
+    }
+    suggested = {
+        key.schema: (key.description or {}).get("suggested_value") for key in schema
+    }
+    assert suggested[CONF_WEATHER_ENTITY] == "weather.home"
+    assert defaults[CONF_INCLUDE_WEEKLY] is False
+    assert defaults[CONF_INCLUDE_MONTHLY] is True
+    assert CONF_TEMPERATURE_SENSOR not in suggested
+
+
+async def test_options_flow_rejects_weather_without_hourly_forecast(
+    hass: HomeAssistant, _temperature_sensor
+) -> None:
+    """A weather entity without hourly forecasts keeps the form open."""
+    hass.states.async_set("weather.daily", "sunny", {"supported_features": 1})
+    entry = _add_entry(hass)
+
+    result = await _start_options_flow(hass, entry)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {**SENSOR_OPTIONS, CONF_WEATHER_ENTITY: "weather.daily"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_WEATHER_ENTITY: "invalid_weather_entity"}
+    assert CONF_WEATHER_ENTITY not in entry.data
+
+
+async def test_options_flow_updates_data_and_generated_title(
+    hass: HomeAssistant, _temperature_sensor
+) -> None:
+    """Options are stored with the entry data; a generated title follows CDD."""
+    hass.states.async_set("weather.home", "sunny", {"supported_features": 2})
+    entry = _add_entry(hass)
+
+    with (
+        patch(
+            "custom_components.heating_cooling_degree_days.async_setup_entry",
+            return_value=True,
+        ),
+        patch(
+            "custom_components.heating_cooling_degree_days.config_flow.async_remove_stored_data",
+            new=AsyncMock(),
+        ) as remove_stored,
+    ):
+        result = await _start_options_flow(hass, entry)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            {
+                **SENSOR_OPTIONS,
+                CONF_INCLUDE_COOLING: True,
+                CONF_WEATHER_ENTITY: "weather.home",
+            },
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {}
+    assert entry.data[CONF_WEATHER_ENTITY] == "weather.home"
+    assert entry.data[CONF_INCLUDE_COOLING] is True
+    assert entry.data[CONF_BASE_TEMPERATURE] == 18.0
+    assert entry.data[CONF_TEMPERATURE_SENSOR] == TEMP_SENSOR
+    assert entry.title == "Heating & Cooling Degree Days (18.0°C)"
+    remove_stored.assert_not_awaited()
+
+
+async def test_options_flow_keeps_custom_title(
+    hass: HomeAssistant, _temperature_sensor
+) -> None:
+    """A custom title is not replaced when the cooling toggle changes."""
+    entry = _add_entry(hass)
+    hass.config_entries.async_update_entry(entry, title="Salon")
+
+    with patch(
+        "custom_components.heating_cooling_degree_days.async_setup_entry",
+        return_value=True,
+    ):
+        result = await _start_options_flow(hass, entry)
+        await hass.config_entries.options.async_configure(
+            result["flow_id"], {**SENSOR_OPTIONS, CONF_INCLUDE_COOLING: True}
+        )
+        await hass.async_block_till_done()
+
+    assert entry.title == "Salon"
+    assert entry.data[CONF_INCLUDE_COOLING] is True
