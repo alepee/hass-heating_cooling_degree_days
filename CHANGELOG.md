@@ -7,11 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0-beta.2] - 2026-11-10
+
 ### Added
-- Options flow ("Configure", cog icon) to add, change or remove the weather forecast entity and toggle the cooling, weekly and monthly sensors without reconfiguring the calculation. Settings stay in the entry data, so no migration is needed; stored daily values are kept and a generated title follows the cooling toggle. Weather Repairs notices now point to it
+- Options flow ("Configure", cog icon) to add, change or remove the weather forecast entity and toggle the cooling, weekly and monthly sensors without reconfiguring the calculation. Settings stay in the entry data, so no migration is needed; stored daily values are kept and a generated title follows the cooling toggle. Weather Repairs notices now point to it (#163)
 
 ### Changed
-- Reconfigure now only changes the name, temperature source and base temperature; the weather entity and the cooling/weekly/monthly sensors moved to the options flow and are preserved when reconfiguring
+- Reconfigure now only changes the name, temperature source and base temperature; the weather entity and the cooling/weekly/monthly sensors moved to the options flow and are preserved when reconfiguring (#163)
 
 ## [1.3.0-beta.1] - 2026-11-09
 
